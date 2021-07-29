@@ -1,0 +1,10 @@
+.card-ribbon {
+  width: 2px;
+  height: 25px;
+  position: absolute;
+  background: red;
+  transform: translate(-50%);
+  left: 97%;
+  top: -10%;
+  transform: rotate(-45deg);
+}

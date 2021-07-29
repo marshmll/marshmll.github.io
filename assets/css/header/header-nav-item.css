@@ -1,0 +1,8 @@
+.header__nav-item {
+  transition: 200ms;
+}
+
+.header__nav-item:hover {
+  transform: scale(1.07);
+  letter-spacing: .01rem;
+}

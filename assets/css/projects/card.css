@@ -1,0 +1,29 @@
+.card {
+  width: 25%;
+  height: 500px;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  margin-left: calc(25% / 3);
+  margin-bottom: calc(25% / 3);
+  box-shadow: 5px 4px 5px #00000050;
+}
+
+.card--alurakut {
+  background: url('../../img/alurakut.png');
+  background-position: left;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+
+.card--analog-clock {
+  background: url('../../img/analog-clock.png');
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+
+.card:hover {
+  border: 1px solid #f0f0f0;
+}

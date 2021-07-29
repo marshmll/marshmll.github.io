@@ -1,0 +1,14 @@
+.header__logo {
+  height: 2rem;
+  width: 2rem;
+  background: url('../../img/logo.svg');
+  background-position: center;
+  background-size: 280%;
+  background-repeat: no-repeat;
+  display: inline-block;
+  transition: 1s;
+}
+
+.header__logo:hover {
+  transform: rotate(180deg);
+}

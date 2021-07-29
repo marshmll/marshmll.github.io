@@ -1,0 +1,13 @@
+.main__profile-image {
+  background: url("https://github.com/marshmll.png");
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  border-radius: 50%;
+  width: 10rem;
+  height: 10rem;
+  display: inline-block;
+  margin-top: 1rem;
+  box-shadow: 5px 5px 10px #00000080;
+  margin-bottom: 1rem;
+}

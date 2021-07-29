@@ -1,0 +1,7 @@
+.card__info {
+  background: white;
+  color: black;
+  box-shadow: 3px 4px 2px #00000075;
+  position: relative;
+  /* overflow: hidden; */
+}
