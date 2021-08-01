@@ -1,0 +1,23 @@
+@media screen and (max-width: 1024px) {
+  .header {
+    font-size: 19px;
+  }
+}
+
+@media screen and (max-width: 768px) {
+  .header {
+    position:absolute
+  }
+
+  .header__nav {
+    flex-direction: column;
+  }
+
+  .header__nav-list {
+    flex-direction: column;
+  }
+
+  .header__nav-item {
+    padding: .5rem 0;
+  }
+}
