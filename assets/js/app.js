@@ -12,5 +12,7 @@ navItems.forEach(item => item.addEventListener('click', event => {
 
 window.addEventListener("load", function () {
   const loader = document.querySelector(".loader");
-  loader.className += " hidden";
+  setTimeout(() => {
+    loader.className += " hidden";
+  }, 200);
 });
