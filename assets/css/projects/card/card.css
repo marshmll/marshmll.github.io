@@ -11,14 +11,14 @@
 }
 
 .card--alurakut {
-  background: url('../../img/alurakut.png');
+  background: url('../../../img/alurakut.png');
   background-position: left;
   background-size: cover;
   background-repeat: no-repeat;
 }
 
 .card--analog-clock {
-  background: url('../../img/analog-clock.png');
+  background: url('../../../img/analog-clock.png');
   background-position: center;
   background-size: cover;
   background-repeat: no-repeat;
