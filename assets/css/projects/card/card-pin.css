@@ -1,0 +1,6 @@
+.card__pin {
+  position: absolute;
+  left: 97%;
+  top: 20%;
+  transform: translate(-50%, -50%);
+}

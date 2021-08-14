@@ -5,9 +5,10 @@
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  margin-left: calc(25% / 3);
-  margin-bottom: calc(25% / 3);
+  margin: 0 calc(10% / 3) 1rem;
   box-shadow: 5px 4px 5px #00000050;
+  box-shadow: inset 5px 5px 5px #00000075;
+  transition: 250ms;
 }
 
 .card--alurakut {
@@ -24,6 +25,27 @@
   background-repeat: no-repeat;
 }
 
+.card--typing-speed {
+  background: url('../../../img/teste-de-velocidade-de-digitacao.png');
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+
+.card--vanilla-modal {
+  background: url('../../../img/vanilla-modal.png');
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+
+.card--infinite-scroll {
+  background: url('../../../img/scroll-infinito.png');
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+
 .card:hover {
-  border: 1px solid #f0f0f0;
+  border: 2px solid #f0f0f0;
 }
