@@ -3,13 +3,15 @@ import { tokenize } from "./modules/lexer.js";
 import { parse } from "./modules/parser.js";
 import { normalizeAssociative, toFNC, toFND } from "./modules/transformer.js";
 
-const input = "(P \\leftrightarrow Q)";
+const input = "(\\forall P(x) \\exists Q(x,y)) \\land A";
 const consumer = tokenize(input);
 
-const ast = parse(consumer);
-const norm = normalizeAssociative(ast);
-const fnc = toFNC(norm);
-const fnd = toFND(norm);
+while (consumer.peek()) console.log(consumer.next());
 
-console.log("FNC:", astToLatex(fnc));
-console.log("FND:", astToLatex(fnd));
+// const ast = parse(consumer);
+// const norm = normalizeAssociative(ast);
+// const fnc = toFNC(norm);
+// const fnd = toFND(norm);
+
+// console.log("FNC:", astToLatex(fnc));
+// console.log("FND:", astToLatex(fnd));

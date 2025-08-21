@@ -14,6 +14,9 @@ export const TokenType = {
   TRUE: "TRUE",
   FALSE: "FALSE",
   VAR: "VAR",
+  PREDICATE: "PREDICATE",
+  FORALL: "FORALL",
+  EXISTS: "EXISTS",
 };
 
 export const LiteralTokenMap = {
@@ -31,6 +34,8 @@ export const LiteralTokenMap = {
   "}": TokenType.RBRACE,
   "\\true": TokenType.TRUE,
   "\\false": TokenType.FALSE,
+  "\\forall": TokenType.FORALL,
+  "\\exists": TokenType.EXISTS,
 };
 
 export class TokenConsumer {
@@ -82,7 +87,20 @@ export function tokenize(input = "") {
         buf = "";
       }
 
-      tokens.push(createToken(TokenType.VAR, c));
+      // Handle predicates
+      if (chars[i + 1] == "(") {
+        while (i < chars.length) {
+          buf += chars[i];
+          if (chars[i] == ")") break;
+          i++;
+        }
+
+        tokens.push(createToken(TokenType.PREDICATE, buf, i));
+        buf = "";
+      } else {
+        tokens.push(createToken(TokenType.VAR, c, i));
+      }
+
       continue;
     }
 
