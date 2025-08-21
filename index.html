@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LaTeX.js Example</title>
+    <script src="https://cdn.jsdelivr.net/npm/latex.js/dist/latex.js"></script>
+  </head>
+  <body>
+    <h1>LaTeX.js Rendering Example</h1>
+    <div id="latex-output"></div>
+
+    <script>
+      // The LaTeX string to be rendered.
+      // Backslashes need to be escaped in JavaScript strings.
+      var latexText =
+        "$$(\\neg P \\lor P) \\land (\\neg Q \\lor P) \\land (\\neg P \\lor Q) \\land (\\neg Q \\lor Q)$$";
+
+      // Create an HtmlGenerator instance.
+      var generator = new latexjs.HtmlGenerator({ hyphenate: false });
+
+      // Parse the LaTeX text and generate HTML.
+      generator = latexjs.parse(latexText, { generator: generator });
+
+      // Append the generated styles and scripts to the document head.
+      // The path should point to the directory containing the LaTeX.js assets on the CDN.
+      document.head.appendChild(
+        generator.stylesAndScripts(
+          "https://cdn.jsdelivr.net/npm/latex.js@0.12.4/dist/"
+        )
+      );
+
+      // Append the generated HTML fragment to the body or a specific element.
+      document
+        .getElementById("latex-output")
+        .appendChild(generator.domFragment());
+    </script>
+  </body>
+</html>
