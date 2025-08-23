@@ -17,7 +17,15 @@ export function normalizeAssociative(node) {
   if (!node) return null;
 
   // Leaf nodes: variable or predicate
-  if ([TokenType.VAR, TokenType.PREDICATE].includes(node.type)) return node;
+  if (
+    [
+      TokenType.VAR,
+      TokenType.PREDICATE,
+      TokenType.TRUE,
+      TokenType.FALSE,
+    ].includes(node.type)
+  )
+    return node;
 
   if (node.type === TokenType.NEGATION) {
     return NEG(normalizeAssociative(node.child));
@@ -50,6 +58,8 @@ export function normalizeAssociative(node) {
       child: normalizeAssociative(node.child),
     });
   }
+
+  console.log(node);
 
   throw new Error("Unknown node type: " + node.type);
 }
@@ -245,6 +255,8 @@ export function pushNegationsInwards(node) {
   switch (node.type) {
     case TokenType.VAR:
     case TokenType.PREDICATE:
+    case TokenType.TRUE:
+    case TokenType.FALSE:
       return node;
 
     case TokenType.NEGATION: {
