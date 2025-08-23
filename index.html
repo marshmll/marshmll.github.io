@@ -1,12 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Calculadora de Formas Normais</title>
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- KaTeX for better LaTeX rendering -->
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css"
@@ -19,393 +17,99 @@
       defer
       src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
     ></script>
-    <!-- Font Awesome for icons -->
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
     />
-    <style>
-      :root {
-        --primary: #6366f1;
-        --primary-light: #818cf8;
-        --primary-dark: #4f46e5;
-        --secondary: #14b8a6;
-        --dark: #1f2937;
-        --light: #f9fafb;
-        --border: #e5e7eb;
-      }
-
-      body {
-        background: linear-gradient(135deg, #f5f7fa 0%, #e4e7ec 100%);
-        min-height: 100vh;
-        font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
-      }
-
-      .card {
-        background: white;
-        border-radius: 16px;
-        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05),
-          0 5px 10px -5px rgba(0, 0, 0, 0.04);
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
-        overflow: hidden;
-      }
-
-      .card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1),
-          0 10px 10px -5px rgba(0, 0, 0, 0.04);
-      }
-
-      .latex-container {
-        min-height: 120px;
-        padding: 1.5rem;
-        border-radius: 12px;
-        background-color: #f8fafc;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border: 2px dashed #cbd5e1;
-        transition: all 0.2s ease;
-        overflow-x: auto;
-      }
-
-      .latex-container.has-content {
-        border-color: var(--primary-light);
-        background-color: #f0f4ff;
-      }
-
-      .result-box {
-        min-height: 100px;
-        padding: 1.25rem;
-        border-radius: 12px;
-        background-color: #f8fafc;
-        border: 1px solid #e2e8f0;
-        transition: all 0.2s ease;
-        overflow-x: auto;
-      }
-
-      .result-box.loading {
-        background: linear-gradient(
-          90deg,
-          #f8fafc 0%,
-          #f1f5f9 50%,
-          #f8fafc 100%
-        );
-        background-size: 200% 100%;
-        animation: loading 1.5s infinite;
-      }
-
-      .btn-primary {
-        background: linear-gradient(
-          to right,
-          var(--primary),
-          var(--primary-light)
-        );
-        color: white;
-        padding: 0.875rem 2rem;
-        border-radius: 12px;
-        font-weight: 600;
-        transition: all 0.2s ease;
-        box-shadow: 0 4px 6px rgba(99, 102, 241, 0.3);
-        position: relative;
-        overflow: hidden;
-      }
-
-      .btn-primary:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 15px rgba(99, 102, 241, 0.4);
-        background: linear-gradient(
-          to right,
-          var(--primary-dark),
-          var(--primary)
-        );
-      }
-
-      .btn-primary:active {
-        transform: translateY(0);
-      }
-
-      .btn-primary:after {
-        content: "";
-        position: absolute;
-        top: 0;
-        left: -100%;
-        width: 100%;
-        height: 100%;
-        background: linear-gradient(
-          90deg,
-          transparent,
-          rgba(255, 255, 255, 0.2),
-          transparent
-        );
-        transition: 0.5s;
-      }
-
-      .btn-primary:hover:after {
-        left: 100%;
-      }
-
-      textarea {
-        transition: all 0.2s ease;
-        resize: none;
-      }
-
-      textarea:focus {
-        border-color: var(--primary);
-        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
-      }
-
-      .header-gradient {
-        background: linear-gradient(
-          135deg,
-          var(--primary) 0%,
-          var(--primary-dark) 100%
-        );
-        -webkit-background-clip: text;
-        background-clip: text;
-        -webkit-text-fill-color: transparent;
-      }
-
-      .pulse {
-        animation: pulse 2s infinite;
-      }
-
-      @keyframes pulse {
-        0% {
-          opacity: 1;
-        }
-        50% {
-          opacity: 0.7;
-        }
-        100% {
-          opacity: 1;
-        }
-      }
-
-      @keyframes loading {
-        0% {
-          background-position: 200% 0;
-        }
-        100% {
-          background-position: -200% 0;
-        }
-      }
-
-      .formula-examples {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-        margin-top: 0.75rem;
-      }
-
-      .example-chip {
-        background-color: #f1f5f9;
-        padding: 0.5rem 1rem;
-        border-radius: 24px;
-        font-size: 0.875rem;
-        color: #64748b;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        border: 1px solid transparent;
-      }
-
-      .example-chip:hover {
-        background-color: #e2e8f0;
-        color: var(--primary-dark);
-        border-color: var(--primary-light);
-        transform: translateY(-1px);
-      }
-
-      .example-chip:active {
-        transform: translateY(0);
-      }
-
-      .tooltip {
-        position: relative;
-        display: inline-block;
-      }
-
-      .tooltip .tooltiptext {
-        visibility: hidden;
-        width: 200px;
-        background-color: var(--dark);
-        color: #fff;
-        text-align: center;
-        border-radius: 6px;
-        padding: 8px;
-        position: absolute;
-        z-index: 1;
-        bottom: 125%;
-        left: 50%;
-        transform: translateX(-50%);
-        opacity: 0;
-        transition: opacity 0.3s;
-        font-size: 0.75rem;
-      }
-
-      .tooltip:hover .tooltiptext {
-        visibility: visible;
-        opacity: 1;
-      }
-
-      .success-animation {
-        animation: successPulse 0.5s ease;
-      }
-
-      @keyframes successPulse {
-        0% {
-          transform: scale(1);
-        }
-        50% {
-          transform: scale(1.05);
-        }
-        100% {
-          transform: scale(1);
-        }
-      }
-
-      @media (max-width: 768px) {
-        .card {
-          padding: 1.5rem;
-        }
-
-        .grid-cols-1 {
-          grid-template-columns: 1fr;
-        }
-
-        .formula-examples {
-          justify-content: center;
-        }
-      }
-
-      .katex {
-        font-size: 1.1em;
-      }
-
-      .katex-display {
-        margin: 0;
-        overflow-x: auto;
-        overflow-y: hidden;
-      }
-    </style>
+    <link rel="stylesheet" href="./assets/styles/index.css" />
   </head>
-  <body class="font-sans">
-    <div class="max-w-4xl mx-auto p-4 md:p-6">
+  <body>
+    <!-- Floating Logic Symbols -->
+    <div class="symbol-bg" id="symbol-bg"></div>
+
+    <div class="max-w-6xl mx-auto p-4 md:p-6 relative z-10">
+      <!-- Header -->
       <div class="text-center mb-10">
         <h1 class="text-4xl md:text-5xl font-bold header-gradient mb-3">
           Calculadora de Formas Normais
         </h1>
-        <p class="text-gray-600 text-lg md:text-xl max-w-2xl mx-auto">
-          Insira uma fórmula lógica bem-formada e descubra as suas formas
-          normais conjuntivas e disjuntivas
+        <p class="text-gray-300 text-lg md:text-xl max-w-2xl mx-auto">
+          Insira uma fórmula lógica bem-formada e descubra suas formas normais
+          conjuntivas e disjuntivas
         </p>
       </div>
 
-      <div class="card p-6 md:p-8 mb-8">
-        <div class="mb-6">
-          <div class="flex items-center mb-3">
-            <label
-              for="latex-input"
-              class="block text-sm font-medium text-gray-700"
-              >Entrada de Fórmulas Lógicas</label
+      <!-- Input Card -->
+      <div class="card mb-8">
+        <label for="latex-input" class="block text-sm font-medium mb-2"
+          >Entrada de Fórmulas Lógicas
+          <span class="tooltip ml-2">
+            <i class="fas fa-question-circle text-gray-400"></i>
+            <span class="tooltiptext"
+              >Use símbolos LaTeX como \land, \lor, \neg, \rightarrow,
+              \leftrightarrow</span
             >
-            <span class="tooltip ml-2">
-              <i class="fas fa-question-circle text-gray-400"></i>
-              <span class="tooltiptext"
-                >Use símbolos LaTeX como \land, \lor, \neg, \rightarrow,
-                \leftrightarrow</span
-              >
-            </span>
-          </div>
-          <textarea
-            id="latex-input"
-            rows="3"
-            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition text-lg"
-            style="font-family: monospace"
-            placeholder="Digite sua fórmula (ex: P \land Q, \neg P \lor Q, etc.)"
-          >
-(P \lor Q) \land (\neg P \lor R)</textarea
-          >
+          </span>
+        </label>
+        <textarea
+          id="latex-input"
+          rows="3"
+          placeholder="Digite sua fórmula..."
+        ></textarea>
 
-          <div class="formula-examples">
-            <div class="example-chip" data-formula="P \land Q">P ∧ Q</div>
-            <div class="example-chip" data-formula="P \lor Q">P ∨ Q</div>
-            <div class="example-chip" data-formula="P \rightarrow Q">P ⇒ Q</div>
-            <div class="example-chip" data-formula="P \leftrightarrow Q">
-              P ⇔ Q
-            </div>
-            <div class="example-chip" data-formula="\neg(P \land Q)">
-              ¬(P ∧ Q)
-            </div>
+        <div class="formula-examples">
+          <div class="example-chip" data-formula="P \land Q">P ∧ Q</div>
+          <div class="example-chip" data-formula="P \lor Q">P ∨ Q</div>
+          <div class="example-chip" data-formula="P \rightarrow Q">P ⇒ Q</div>
+          <div class="example-chip" data-formula="P \leftrightarrow Q">
+            P ⇔ Q
+          </div>
+          <div class="example-chip" data-formula="\neg(P \land Q)">
+            ¬(P ∧ Q)
           </div>
         </div>
 
-        <div class="mb-6">
-          <label class="block text-sm font-medium text-gray-700 mb-3"
-            >Visualização da Fórmula</label
-          >
-          <div id="latex-output" class="latex-container">
-            <span class="text-gray-400">Sua fórmula aparecerá aqui</span>
-          </div>
+        <div id="latex-output" class="latex-container mt-6">
+          <span class="text-gray-400">Sua fórmula aparecerá aqui</span>
         </div>
 
         <div class="flex justify-center mt-8">
-          <button
-            id="calculate-btn"
-            class="btn-primary flex items-center text-lg"
-          >
-            <i class="fas fa-calculator mr-3"></i> Calcular FNC & FND
+          <button id="calculate-btn" class="btn-primary">
+            <i class="fas fa-calculator"></i> Calcular FNC & FND
           </button>
         </div>
       </div>
 
+      <!-- Output Cards -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
         <div class="card p-6">
-          <div class="flex items-center mb-4">
-            <div class="bg-indigo-100 p-3 rounded-xl mr-4">
-              <i class="fas fa-concierge-bell text-indigo-600 text-xl"></i>
-            </div>
-            <div>
-              <h2 class="text-xl font-semibold text-gray-800">
-                Forma Normal Conjuntiva (FNC)
-              </h2>
-              <p class="text-sm text-gray-500 mt-1">Conjunção de disjunções</p>
-            </div>
-          </div>
-          <div
-            id="fnc-output"
-            class="result-box text-gray-700 flex items-center justify-center"
-          >
+          <h2 class="text-xl font-semibold mb-2">
+            Forma Normal Conjuntiva (FNC)
+          </h2>
+          <div id="fnc-output" class="result-box cursor-pointer">
             <span class="text-gray-400">O resultado FNC aparecerá aqui</span>
           </div>
         </div>
 
         <div class="card p-6">
-          <div class="flex items-center mb-4">
-            <div class="bg-teal-100 p-3 rounded-xl mr-4">
-              <i class="fas fa-project-diagram text-teal-600 text-xl"></i>
-            </div>
-            <div>
-              <h2 class="text-xl font-semibold text-gray-800">
-                Forma Normal Disjuntiva (FND)
-              </h2>
-              <p class="text-sm text-gray-500 mt-1">Disjunção de conjunções</p>
-            </div>
-          </div>
-          <div
-            id="fnd-output"
-            class="result-box text-gray-700 flex items-center justify-center"
-          >
+          <h2 class="text-xl font-semibold mb-2">
+            Forma Normal Disjuntiva (FND)
+          </h2>
+          <div id="fnd-output" class="result-box cursor-pointer">
             <span class="text-gray-400">O resultado FND aparecerá aqui</span>
           </div>
         </div>
       </div>
 
       <div class="mt-12 text-center text-sm text-gray-500">
-        <p>Renan Andrade (@marshmll) &copy; 2025</p>
+        <p>
+          Renan Andrade (<a href="https://github.com/marshmll" class="underline"
+            >@marshmll</a
+          >) &copy; 2025
+        </p>
       </div>
     </div>
 
-    <script src="./assets/scripts/index.js" type="module"></script>
+    <script type="module" src="./assets/scripts/index.js"></script>
   </body>
 </html>

@@ -1,8 +1,8 @@
 import { tokenize } from "./modules/lexer.js";
 import { parse } from "./modules/parser.js";
-import { normalizeAssociative } from "./modules/transformer.js";
-import { toFNC, toFND } from "./modules/transformer.js";
-import { astToLatex } from "./modules/converter.js";
+import { normalizeAssociative, toFNC, toFND } from "./modules/transformer.js";
+import { prettify } from "./modules/printer.js";
+import { simplifyFNC, simplifyFND } from "./modules/simplifier.js";
 
 // DOM elements
 const latexInput = document.getElementById("latex-input");
@@ -11,6 +11,7 @@ const calculateBtn = document.getElementById("calculate-btn");
 const cnfOutput = document.getElementById("fnc-output");
 const dnfOutput = document.getElementById("fnd-output");
 const exampleChips = document.querySelectorAll(".example-chip");
+const symbolContainer = document.getElementById("symbol-bg");
 
 // Custom macro definitions for KaTeX
 const customMacros = {
@@ -24,85 +25,101 @@ const customMacros = {
   "\\implies": "\\to",
 };
 
-// Function to render LaTeX using KaTeX
+// ================= Floating Background Symbols =================
+const symbols = ["∧", "∨", "¬"];
+for (let i = 0; i < 25; i++) {
+  const sym = document.createElement("div");
+  sym.className = "symbol";
+  sym.innerText = symbols[Math.floor(Math.random() * symbols.length)];
+  sym.style.left = `${Math.random() * 100}vw`;
+  sym.style.fontSize = `${Math.random() * 24 + 12}px`;
+  sym.style.animationDuration = `${Math.random() * 15 + 10}s`;
+  symbolContainer.appendChild(sym);
+}
+
+// ================= Render LaTeX Function =================
 function renderLatex(latexText, element) {
   try {
-    // Clear previous content
-    element.innerHTML = "";
+    element.innerHTML = ""; // clear previous
+    if (!latexText.trim()) {
+      element.innerHTML =
+        '<span class="text-gray-400">Sua fórmula aparecerá aqui</span>';
+      element.classList.remove("has-content");
+      return;
+    }
 
-    // Create a container for the KaTeX rendering
     const container = document.createElement("div");
     container.className = "katex-container";
 
-    // Render using KaTeX with custom macros
     katex.render(latexText, container, {
       displayMode: true,
       throwOnError: false,
       macros: customMacros,
     });
 
-    // Add to the output element
     element.appendChild(container);
     element.classList.add("has-content");
   } catch (error) {
-    element.innerHTML = `<div class="text-red-500 text-center p-4"><i class="fas fa-exclamation-circle mr-2"></i>Erro ao renderizar fórmula: ${error.message}</div>`;
+    element.innerHTML = `<div class="text-red-500 text-center p-4"><i class="fas fa-exclamation-circle mr-2"></i>Erro: ${error.message}</div>`;
     element.classList.remove("has-content");
   }
 }
 
-// Function to calculate FNC and FND
+// ================= Calculate Normal Forms =================
 function calculateNormalForms(formula) {
   const consumer = tokenize(formula);
   const node = parse(consumer);
   const norm = normalizeAssociative(node);
   const fncAst = toFNC(norm);
   const fndAst = toFND(norm);
+  const simplifiedFnc = simplifyFNC(fncAst);
+  const simplifiedFnd = simplifyFND(fndAst);
 
-  let fnc = astToLatex(fncAst);
-  let fnd = astToLatex(fndAst);
-
-  return { fnc, fnd };
+  return {
+    fnc: prettify(simplifiedFnc),
+    fnd: prettify(simplifiedFnd),
+  };
 }
 
-// Event listener for input changes
-latexInput.addEventListener("input", () => {
-  const formula = latexInput.value;
-  renderLatex(formula, latexOutput);
-});
+// ================= Event Listeners =================
+// Live LaTeX preview
+latexInput.addEventListener("input", () =>
+  renderLatex(latexInput.value, latexOutput)
+);
 
-// Event listener for example chips
+// Example chips
 exampleChips.forEach((chip) => {
   chip.addEventListener("click", () => {
-    latexInput.value = chip.getAttribute("data-formula");
+    latexInput.value = chip.dataset.formula;
     renderLatex(latexInput.value, latexOutput);
   });
 });
 
-// Event listener for calculate button
+// Calculate button with smooth loading
 calculateBtn.addEventListener("click", () => {
-  const formula = latexInput.value;
+  const formula = latexInput.value.trim();
+  if (!formula) return;
 
-  // Show loading state
+  // Show loading placeholders
   cnfOutput.innerHTML =
-    '<div class="text-center text-gray-500 p-4"><i class="fas fa-spinner fa-spin mr-2"></i>Calculando...</div>';
+    '<div class="text-center text-gray-500 p-4 animate-pulse"><i class="fas fa-spinner fa-spin mr-2"></i>Calculando...</div>';
   dnfOutput.innerHTML =
-    '<div class="text-center text-gray-500 p-4"><i class="fas fa-spinner fa-spin mr-2"></i>Calculando...</div>';
+    '<div class="text-center text-gray-500 p-4 animate-pulse"><i class="fas fa-spinner fa-spin mr-2"></i>Calculando...</div>';
 
-  try {
-    const results = calculateNormalForms(formula);
-
-    // Render FNC
-    renderLatex(results.fnc, cnfOutput);
-
-    // Render FND
-    renderLatex(results.fnd, dnfOutput);
-  } catch (error) {
-    cnfOutput.innerHTML = `<div class="text-red-500 text-center p-4"><i class="fas fa-exclamation-circle mr-2"></i>Erro: ${error.message}</div>`;
-    dnfOutput.innerHTML = `<div class="text-red-500 text-center p-4"><i class="fas fa-exclamation-circle mr-2"></i>Erro: ${error.message}</div>`;
-  }
+  setTimeout(() => {
+    try {
+      const results = calculateNormalForms(formula);
+      renderLatex(results.fnc, cnfOutput);
+      renderLatex(results.fnd, dnfOutput);
+    } catch (error) {
+      const errMsg = `<div class="text-red-400 text-center p-4"><i class="fas fa-exclamation-circle mr-2"></i>Erro: ${error.message}</div>`;
+      cnfOutput.innerHTML = errMsg;
+      dnfOutput.innerHTML = errMsg;
+    }
+  }, 200); // small delay for smoothness
 });
 
 // Initial render
-document.addEventListener("DOMContentLoaded", function () {
-  renderLatex(latexInput.value, latexOutput);
-});
+document.addEventListener("DOMContentLoaded", () =>
+  renderLatex(latexInput.value, latexOutput)
+);

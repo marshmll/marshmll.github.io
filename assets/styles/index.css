@@ -1,0 +1,236 @@
+:root {
+  --primary: #6c5ce7;
+  --primary-light: #a29bfe;
+  --secondary: #00cec9;
+  --dark-bg: #1a1a2e;
+  --card-bg: rgba(255, 255, 255, 0.08);
+  --border: rgba(255, 255, 255, 0.15);
+  --text-light: #eaeaea;
+}
+
+/* ================== Background Animation ================== */
+body {
+  background: linear-gradient(135deg, #1a1a2e 0%, #162447 100%);
+  color: var(--text-light);
+  min-height: 100vh;
+  font-family: "Poppins", sans-serif;
+  overflow-x: hidden;
+  position: relative;
+}
+
+.symbol-bg {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.symbol {
+  position: absolute;
+  font-size: 1.2rem;
+  color: rgba(255, 255, 255, 0.05);
+  animation: float linear infinite;
+}
+
+@keyframes float {
+  0% {
+    transform: translateY(100vh) rotate(0deg);
+    opacity: 0;
+  }
+  50% {
+    opacity: 0.3;
+  }
+  100% {
+    transform: translateY(-20vh) rotate(360deg);
+    opacity: 0;
+  }
+}
+
+/* ================== Header ================== */
+.header-gradient {
+  background: linear-gradient(135deg, var(--primary), var(--primary-light));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* ================== Cards ================== */
+.card {
+  background: var(--card-bg);
+  backdrop-filter: blur(12px);
+  border-radius: 20px;
+  padding: 2rem;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+  transition: transform 0.3s ease, box-shadow 0.3s ease, background 0.3s ease;
+  position: relative;
+  z-index: 1;
+}
+
+.card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 15px 30px rgba(0, 0, 0, 0.35);
+}
+
+/* ================== Textarea ================== */
+#latex-input {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 1rem;
+  color: var(--text-light);
+  font-family: monospace;
+  width: 100%;
+  transition: all 0.3s ease;
+  resize: none;
+  min-height: 100px;
+  outline: none;
+  box-shadow: inset 0 0 0 rgba(0, 0, 0, 0);
+}
+
+#latex-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 10px rgba(108, 92, 231, 0.5);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* ================== Buttons ================== */
+.btn-primary {
+  background: linear-gradient(135deg, var(--primary), var(--primary-light));
+  padding: 0.875rem 2rem;
+  border-radius: 14px;
+  font-weight: 700;
+  color: white;
+  box-shadow: 0 6px 15px rgba(108, 92, 231, 0.4);
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(108, 92, 231, 0.5);
+}
+
+.btn-primary i {
+  margin-right: 0.5rem;
+}
+
+/* ================== Formula Display ================== */
+.latex-container,
+.result-box {
+  min-height: 120px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px dashed var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  transition: all 0.3s ease;
+  overflow-x: auto;
+  font-weight: 500;
+}
+
+.latex-container.has-content {
+  border-color: var(--primary-light);
+  background: rgba(108, 92, 231, 0.05);
+}
+
+.result-box.loading {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.05) 0%,
+    rgba(255, 255, 255, 0.1) 50%,
+    rgba(255, 255, 255, 0.05) 100%
+  );
+  background-size: 200% 100%;
+  animation: loading 1.5s infinite;
+}
+
+@keyframes loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* ================== Chips ================== */
+.formula-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.example-chip {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 0.5rem 1rem;
+  border-radius: 24px;
+  color: var(--text-light);
+  font-size: 0.875rem;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.3s ease;
+}
+
+.example-chip:hover {
+  background: rgba(108, 92, 231, 0.15);
+  border-color: var(--primary-light);
+  transform: translateY(-2px);
+}
+
+/* ================== Tooltip ================== */
+.tooltip {
+  position: relative;
+  display: inline-block;
+}
+
+.tooltip .tooltiptext {
+  visibility: hidden;
+  width: 220px;
+  background-color: var(--dark-bg);
+  color: #fff;
+  text-align: center;
+  border-radius: 6px;
+  padding: 6px 10px;
+  position: absolute;
+  z-index: 10;
+  right: 0;
+  transform: translateX(100%);
+  opacity: 0;
+  transition: opacity 0.3s;
+  font-size: 0.75rem;
+}
+
+.tooltip:hover .tooltiptext {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* ================== Animations ================== */
+.katex {
+  font-size: 1.1rem;
+}
+
+.katex-display {
+  margin: 0;
+  overflow-x: auto;
+}
+
+@media (max-width: 768px) {
+  .card {
+    padding: 1.5rem;
+  }
+  .formula-examples {
+    justify-content: center;
+  }
+}

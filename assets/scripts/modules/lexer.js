@@ -2,7 +2,7 @@ export const TokenType = {
   UNKNOWN: "UNKNOWN",
   CONJUNCTION: "CONJUNCTION",
   DISJUNCTION: "DISJUNCTION",
-  IMPLICATION: "IMPLICATION",
+  IMPLIES: "IMPLIES",
   BICONDITIONAL: "BICONDITIONAL",
   NEGATION: "NEGATION",
   LPAREN: "LPAREN",
@@ -22,8 +22,8 @@ export const TokenType = {
 export const LiteralTokenMap = {
   "\\land": TokenType.CONJUNCTION,
   "\\lor": TokenType.DISJUNCTION,
-  "\\to": TokenType.IMPLICATION,
-  "\\rightarrow": TokenType.IMPLICATION,
+  "\\to": TokenType.IMPLIES,
+  "\\rightarrow": TokenType.IMPLIES,
   "\\leftrightarrow": TokenType.BICONDITIONAL,
   "\\neg": TokenType.NEGATION,
   "(": TokenType.LPAREN,
@@ -71,9 +71,9 @@ export function tokenize(input = "") {
   for (let i = 0; i < chars.length; i++) {
     const c = chars[i];
 
-    // Handle single uppercase propositional variables (A, B, C...)
+    // Handle single propositional variables (P, Q, R, x, y, z)
     if (
-      /^[A-Z]$/.test(c) &&
+      /^[a-zA-Z]$/.test(c) &&
       !/^[a-zA-Z]$/.test(chars[i + 1]) &&
       !/^[a-zA-Z]$/.test(chars[i - 1])
     ) {
