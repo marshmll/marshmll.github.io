@@ -59,8 +59,6 @@ export function normalizeAssociative(node) {
     });
   }
 
-  console.log(node);
-
   throw new Error("Unknown node type: " + node.type);
 }
 

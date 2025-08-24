@@ -1,11 +1,6 @@
 import { TokenType } from "./lexer.js";
 import { createNode } from "./parser.js";
-
-const TRUE = () => createNode(TokenType.TRUE);
-const FALSE = () => createNode(TokenType.FALSE);
-const NEG = (child) => createNode(TokenType.NEGATION, { child });
-const AND = (children = []) => createNode(TokenType.CONJUNCTION, { children });
-const OR = (children = []) => createNode(TokenType.DISJUNCTION, { children });
+import { TRUE, FALSE, NEG, OR, AND } from "./transformer.js";
 
 const keyOf = (node) => JSON.stringify(node);
 
@@ -14,15 +9,14 @@ function isLiteral(n) {
   if (!n) return false;
   if (n.type === TokenType.TRUE || n.type === TokenType.FALSE) return true;
   if (n.type === TokenType.VAR) return true;
-  // If you support predicates, consider PREDICATE as atomic too:
-  if (n.type === "PREDICATE") return true;
+  if (n.type === TokenType.PREDICATE) return true;
   if (n.type === TokenType.NEGATION) {
     const c = n.child;
     return (
       c.type === TokenType.VAR ||
       c.type === TokenType.TRUE ||
       c.type === TokenType.FALSE ||
-      c.type === "PREDICATE"
+      c.type === TokenType.PREDICATE
     );
   }
   return false;
@@ -40,7 +34,7 @@ function areComplementary(a, b) {
   );
 }
 
-// Flatten nested same-type nodes, e.g., (A ∧ (B ∧ C)) -> (A ∧ B ∧ C)
+// Flatten nested same-type nodes (A ∧ (B ∧ C)) -> (A ∧ B ∧ C)
 function flattenSame(opType, children) {
   const out = [];
   for (const c of children) {
@@ -78,7 +72,7 @@ export function simplify(node) {
       const c = simplify(node.child);
       // ~~A => A
       if (c.type === TokenType.NEGATION) return simplify(c.child);
-      // ¬⊤ = ⊥ ; ¬⊥ = ⊤
+      // ~TRUE = FALSE ; ~FALSE = TRUE
       if (c.type === TokenType.TRUE) return FALSE();
       if (c.type === TokenType.FALSE) return TRUE();
       return NEG(c);
@@ -95,17 +89,17 @@ export function simplify(node) {
       kids = uniqNodes(kids);
 
       // Identity & domination
-      // A ∧ ⊤ = A ; A ∧ ⊥ = ⊥
+      // A ∧ TRUE = A ; A ∧ FALSE = FALSE
       if (kids.some((k) => k.type === TokenType.FALSE)) return FALSE();
       kids = kids.filter((k) => k.type !== TokenType.TRUE);
 
-      // Short-circuit: empty ∧ => ⊤
+      // Short-circuit: empty ∧ => TRUE
       if (kids.length === 0) return TRUE();
       if (kids.length === 1) return kids[0];
 
       // If any child is disjunction, we don't distribute here (that's transformer’s job).
       // But we CAN do literal-level contradiction inside pure-term conjunctions.
-      // If all are literals, check L ∧ ¬L => ⊥
+      // If all are literals, check L ∧ ~L => FALSE
       const allLits = kids.every(isLiteral);
       if (allLits) {
         for (let i = 0; i < kids.length; i++) {
@@ -128,14 +122,14 @@ export function simplify(node) {
       kids = uniqNodes(kids);
 
       // Identity & domination
-      // A ∨ ⊥ = A ; A ∨ ⊤ = ⊤
+      // A ∨ FALSE = A ; A ∨ TRUE = TRUE
       if (kids.some((k) => k.type === TokenType.TRUE)) return TRUE();
       kids = kids.filter((k) => k.type !== TokenType.FALSE);
 
       if (kids.length === 0) return FALSE();
       if (kids.length === 1) return kids[0];
 
-      // If all literals, detect tautology L ∨ ¬L => ⊤
+      // If all literals, detect tautology L ∨ ~L => TRUE
       const allLits = kids.every(isLiteral);
       if (allLits) {
         for (let i = 0; i < kids.length; i++) {
@@ -167,7 +161,6 @@ export function simplify(node) {
   }
 }
 
-// Call these AFTER you have FNC or FND shapes (n-ary AND-of-ORs or OR-of-ANDs).
 export function simplifyFNC(root) {
   const n = simplify(root);
   if (n.type !== TokenType.CONJUNCTION) return n; // already a single clause or constant
@@ -176,7 +169,7 @@ export function simplifyFNC(root) {
   const clauses = n.children.map(simplifyClauseForFNC).filter(Boolean); // drop TRUE clauses
 
   // If any clause is FALSE => whole FNC is FALSE
-  if (clauses.some((c) => c.kind === "FALSE")) return FALSE();
+  if (clauses.some((c) => c.kind === TokenType.FALSE)) return FALSE();
 
   // Subsumption: drop any clause that is a superset of another
   const kept = [];
@@ -184,10 +177,10 @@ export function simplifyFNC(root) {
     let isSubsumed = false;
     for (let j = 0; j < clauses.length; j++) {
       if (i === j) continue;
-      if (isSubset(clauses[i].set, clauses[j].set)) {
-        // i ⊆ j means j is redundant (keep i, remove j). We'll handle by only dropping supersets.
-        // Here we only mark i as subsumed if j ⊆ i (i is superset). So swap:
-      }
+
+      // i ⊆ j means j is redundant (keep i, remove j). We'll handle by only dropping supersets.
+      // Here we only mark i as subsumed if j ⊆ i (i is superset). So swap:
+
       if (isSubset(clauses[j].set, clauses[i].set)) {
         // j ⊆ i => i is superset => drop i
         isSubsumed = true;
@@ -213,7 +206,7 @@ export function simplifyFND(root) {
   const terms = n.children.map(simplifyTermForFND).filter(Boolean); // drop FALSE terms
 
   // If any term is TRUE => whole FND is TRUE
-  if (terms.some((t) => t.kind === "TRUE")) return TRUE();
+  if (terms.some((t) => t.kind === TokenType.TRUE)) return TRUE();
 
   // Subsumption: in FND, drop supersets (A ∨ (A ∧ B) = A)
   const kept = [];
@@ -237,13 +230,11 @@ export function simplifyFND(root) {
   return OR(rebuilt);
 }
 
-// --- Helpers for FNC/FND normal-form nodes ---
-
 function simplifyClauseForFNC(node) {
   // A clause is a DISJUNCTION of literals (or a single literal).
-  // Handle constants inside: L ∨ ⊤ = ⊤, L ∨ ⊥ drops ⊥.
-  if (node.type === TokenType.TRUE) return { kind: "TRUE" };
-  if (node.type === TokenType.FALSE) return { kind: "FALSE" };
+  // Handle constants inside: L ∨ TRUE = TRUE, L ∨ FALSE drops FALSE.
+  if (node.type === TokenType.TRUE) return { kind: TokenType.TRUE };
+  if (node.type === TokenType.FALSE) return { kind: TokenType.FALSE };
 
   let lits = [];
   if (node.type === TokenType.DISJUNCTION && node.children)
@@ -256,7 +247,7 @@ function simplifyClauseForFNC(node) {
   // If clause contains complementary literals => clause is TRUE
   for (let i = 0; i < lits.length; i++) {
     for (let j = i + 1; j < lits.length; j++) {
-      if (areComplementary(lits[i], lits[j])) return { kind: "TRUE" };
+      if (areComplementary(lits[i], lits[j])) return { kind: TokenType.TRUE };
     }
   }
 
@@ -264,14 +255,14 @@ function simplifyClauseForFNC(node) {
   lits = lits.filter((l) => l.type !== TokenType.FALSE);
   const set = new Set(lits.map(literalKey));
 
-  if (set.size === 0) return { kind: "FALSE" }; // empty clause -> ⊥
+  if (set.size === 0) return { kind: TokenType.FALSE }; // empty clause -> FALSE
   return { kind: "CLAUSE", set };
 }
 
 function simplifyTermForFND(node) {
   // A term is a CONJUNCTION of literals (or a single literal).
-  if (node.type === TokenType.TRUE) return { kind: "TRUE" };
-  if (node.type === TokenType.FALSE) return { kind: "FALSE" };
+  if (node.type === TokenType.TRUE) return { kind: TokenType.TRUE };
+  if (node.type === TokenType.FALSE) return { kind: TokenType.FALSE };
 
   let lits = [];
   if (node.type === TokenType.CONJUNCTION && node.children)
@@ -283,7 +274,7 @@ function simplifyTermForFND(node) {
   // If term contains complementary literals => FALSE
   for (let i = 0; i < lits.length; i++) {
     for (let j = i + 1; j < lits.length; j++) {
-      if (areComplementary(lits[i], lits[j])) return { kind: "FALSE" };
+      if (areComplementary(lits[i], lits[j])) return { kind: TokenType.FALSE };
     }
   }
 
@@ -291,7 +282,7 @@ function simplifyTermForFND(node) {
   lits = lits.filter((l) => l.type !== TokenType.TRUE);
   const set = new Set(lits.map(literalKey));
 
-  if (set.size === 0) return { kind: "TRUE" }; // empty conjunction -> ⊤
+  if (set.size === 0) return { kind: TokenType.TRUE }; // empty conjunction -> TRUE
   return { kind: "TERM", set };
 }
 

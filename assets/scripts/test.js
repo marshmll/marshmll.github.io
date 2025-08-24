@@ -14,7 +14,7 @@ import { simplifyFNC, simplifyFND } from "./modules/simplifier.js";
 // Test cases
 const examples = [
   {
-    input: "(P \\land Q) \\to R",
+    input: "(P \\land Q) \\rightarrow R",
     description: "Simple implication",
   },
   {
@@ -26,7 +26,7 @@ const examples = [
     description: "Nested disjunctions",
   },
   {
-    input: "\\forall x \\exists y ((P(x) \\land Q(x)) \\to R(x, y))",
+    input: "\\forall x \\exists y ((P(x) \\land Q(x)) \\rightarrow R(x, y))",
     description: "Quantifiers with implication",
   },
   {
@@ -41,36 +41,33 @@ const examples = [
 
 function runExample(example) {
   console.log("====================================");
-  console.log("Descrição:", example.description);
-  console.log("Expressão:", example.input);
+  console.log("Description:", example.description);
+  console.log("Expression:", example.input);
 
-  // Tokenize and parse
   const consumer = tokenize(example.input);
   const ast = parse(consumer);
 
   const norm = normalizeAssociative(ast);
-  console.log("Normalizando por associatividade:", prettify(norm));
+  console.log("Normalizing by associativity:", prettify(norm));
 
   const phase1 = eliminateImplicationAndBiconditional(norm);
-  console.log("Eliminando cláusulas compostas:", prettify(phase1));
+  console.log("Eliminating compound clauses:", prettify(phase1));
 
   const phase2 = pushNegationsInwards(phase1);
-  console.log("Aplicando negações/De Morgan:", prettify(phase2));
+  console.log("Applying negations/De Morgan:", prettify(phase2));
 
   const phase3 = toPrenex(phase2);
-  console.log("Forma Normal Prenexa:", prettify(phase3));
+  console.log("Prexen Normal Form:", prettify(phase3));
 
-  // FNC
   const fnc = simplifyFNC(distributeFNC(phase3));
-  console.log("Forna Normal Conjuntiva:", prettify(fnc));
+  console.log("Conjunctive Normal Form:", prettify(fnc));
 
-  // FND
   const fnd = simplifyFND(distributeFND(phase3));
-  console.log("Forma Normal Disjuntiva:", prettify(fnd));
+  console.log("Disjunctive Normal Form:", prettify(fnd));
 
   console.log("\n");
 }
 
 // Run all examples
-console.log("+++++++++++++++++++++ TESTES +++++++++++++++++++++");
+console.log("+++++++++++++++++++++ TESTS +++++++++++++++++++++");
 examples.forEach(runExample);
