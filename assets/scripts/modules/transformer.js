@@ -1,503 +1,548 @@
 import { TokenType } from "./lexer.js";
 import { createNode } from "./parser.js";
+import { prettify } from "./printer.js";
+import { simplify, simplifyFNC, simplifyFND } from "./simplifier.js";
 
-export const NEG = (child = {}) => createNode(TokenType.NEGATION, { child });
-export const AND = (children = []) =>
-  createNode(TokenType.CONJUNCTION, { children });
-export const OR = (children = []) =>
-  createNode(TokenType.DISJUNCTION, { children });
-export const TRUE = () => createNode(TokenType.TRUE);
-export const FALSE = () => createNode(TokenType.FALSE);
-export const FORALL = (variable, child = {}) =>
-  createNode(TokenType.FORALL, { variable, child });
-export const EXISTS = (variable, child = {}) =>
-  createNode(TokenType.EXISTS, { variable, child });
-
-export function normalizeAssociative(node) {
-  if (!node) return null;
-
-  // Leaf nodes: variable or predicate
-  if (
-    [
-      TokenType.VAR,
-      TokenType.PREDICATE,
-      TokenType.TRUE,
-      TokenType.FALSE,
-    ].includes(node.type)
-  )
-    return node;
-
-  if (node.type === TokenType.NEGATION) {
-    return NEG(normalizeAssociative(node.child));
-  }
-
-  if ([TokenType.CONJUNCTION, TokenType.DISJUNCTION].includes(node.type)) {
-    const children = [];
-
-    // Collect left/right recursively
-    if (node.left) children.push(normalizeAssociative(node.left));
-    if (node.right) children.push(normalizeAssociative(node.right));
-    if (node.children)
-      children.push(...node.children.map(normalizeAssociative));
-
-    return createNode(node.type, {
-      children: flattenAndDeduplicate(node.type, children),
-    });
-  }
-
-  if ([TokenType.IMPLIES, TokenType.BICONDITIONAL].includes(node.type)) {
-    return createNode(node.type, {
-      left: normalizeAssociative(node.left),
-      right: normalizeAssociative(node.right),
-    });
-  }
-
-  if ([TokenType.FORALL, TokenType.EXISTS].includes(node.type)) {
-    return createNode(node.type, {
-      variable: node.variable,
-      child: normalizeAssociative(node.child),
-    });
-  }
-
-  throw new Error("Unknown node type: " + node.type);
+// Funções auxiliares para criar nós AST
+export function AND(children) {
+  return createNode(TokenType.CONJUNCTION, { children });
 }
 
-export function flattenChildren(children) {
-  const flat = [];
-  for (const c of children) {
-    if (!c) continue;
-    if (Array.isArray(c)) flat.push(...flattenChildren(c));
-    else if (
-      c.type === TokenType.CONJUNCTION ||
-      c.type === TokenType.DISJUNCTION
-    ) {
-      flat.push(c);
-    } else flat.push(c);
-  }
-  return flat;
+export function OR(children) {
+  return createNode(TokenType.DISJUNCTION, { children });
 }
 
-function flattenAndDeduplicate(nodeType, children) {
-  const flat = [];
-
-  for (const c of children) {
-    if (!c) continue;
-
-    // Flatten same-type children
-    if (c.type === nodeType && c.children) {
-      flat.push(...flattenAndDeduplicate(nodeType, c.children));
-    } else {
-      flat.push(c);
-    }
-  }
-
-  // Deduplicate based on JSON string (simplest way for AST)
-  const seen = new Set();
-  const unique = [];
-  for (const c of flat) {
-    const str = JSON.stringify(c);
-    if (!seen.has(str)) {
-      seen.add(str);
-      unique.push(c);
-    }
-  }
-
-  return unique;
+export function NEG(child) {
+  return createNode(TokenType.NEGATION, { child });
 }
 
-// Collect free variables of a node
-export function freeVars(node) {
-  switch (node.type) {
-    case TokenType.VAR:
-      return new Set([node.name]);
-
-    case TokenType.TRUE:
-    case TokenType.FALSE:
-      return new Set();
-
-    case TokenType.NEGATION:
-      return freeVars(node.child);
-
-    case TokenType.CONJUNCTION:
-    case TokenType.DISJUNCTION:
-      return node.children.reduce((acc, c) => {
-        for (let v of freeVars(c)) acc.add(v);
-        return acc;
-      }, new Set());
-
-    case TokenType.IMPLICATION:
-    case TokenType.BICONDITIONAL: {
-      let fvLeft = freeVars(node.left);
-      let fvRight = freeVars(node.right);
-      return new Set([...fvLeft, ...fvRight]);
-    }
-
-    case TokenType.FORALL:
-    case TokenType.EXISTS: {
-      let childFv = freeVars(node.child);
-      childFv.delete(node.variable.literal);
-      return childFv;
-    }
-
-    default:
-      return new Set();
-  }
+export function TRUE() {
+  return createNode(TokenType.TRUE);
 }
 
-// Generate fresh variable name if conflict
-let varCounter = 0;
-function freshVar(base = "x") {
-  return `${base}_${varCounter++}`;
+export function FALSE() {
+  return createNode(TokenType.FALSE);
 }
 
-// Deep clone with variable substitution
-function substituteVar(node, oldName, newName) {
-  if (!node) return null;
+// Transformação principal
+export function transformarFormula(ast) {
+  const passos = [];
 
-  switch (node.type) {
-    case TokenType.VAR:
-      if (node.name === oldName) {
-        return { ...node, name: newName };
-      }
-      return node;
+  // Passo 1: Eliminar Implicações
+  const semImplicacoes = eliminarImplicacoes(ast);
+  passos.push({
+    nome: "Eliminar Implicações",
+    resultado: prettify(semImplicacoes),
+  });
 
-    case TokenType.NEGATION:
-      return { ...node, child: substituteVar(node.child, oldName, newName) };
+  // Passo 2: Mover Negações para Dentro (Forma Normal Negativa)
+  const fnn = moverNegacoesParaDentro(semImplicacoes);
+  passos.push({
+    nome: "Forma Normal Negativa",
+    resultado: prettify(fnn),
+  });
 
-    case TokenType.CONJUNCTION:
-    case TokenType.DISJUNCTION:
-      return {
-        ...node,
-        children: node.children.map((c) => substituteVar(c, oldName, newName)),
-      };
+  // Passo 3: Padronizar Variáveis
+  const padronizado = padronizarVariaveis(fnn);
+  passos.push({
+    nome: "Padronizar Variáveis",
+    resultado: prettify(padronizado),
+  });
 
-    case TokenType.IMPLICATION:
+  // Passo 4: Forma Normal Prenex
+  const prenex = formaPrenex(padronizado);
+  passos.push({
+    nome: "Forma Normal Prenex",
+    resultado: prettify(prenex),
+  });
+
+  // Passo 5: Skolemização
+  const skolem = skolemizacao(prenex);
+  passos.push({
+    nome: "Skolemização",
+    resultado: prettify(skolem),
+  });
+
+  // Passo 6: Eliminar Quantificadores Universais
+  const semQuantificadores = eliminarQuantificadoresUniversais(skolem);
+  passos.push({
+    nome: "Eliminar Quantificadores Universais",
+    resultado: prettify(semQuantificadores),
+  });
+
+  // Passo 7: Converter para FNC
+  const fnc = converterFNC(semQuantificadores);
+  passos.push({
+    nome: "Forma Normal Conjuntiva",
+    resultado: prettify(fnc),
+  });
+
+  // Passo 8: Forma Clausal
+  const formaClausal = obterFormaClausal(fnc);
+  passos.push({
+    nome: "Forma Clausal",
+    resultado: formaClausal,
+  });
+
+  // Passo 9: Identificar Cláusulas de Horn
+  const hornClauses = identificarClausulasDeHorn(formaClausal);
+  passos.push({
+    nome: "Cláusulas de Horn",
+    resultado: hornClauses,
+  });
+
+  return passos;
+}
+
+// Implementação das funções de transformação
+function eliminarImplicacoes(ast) {
+  if (!ast) return ast;
+
+  switch (ast.type) {
+    case TokenType.IMPLIES:
+      // A → B ≡ ¬A ∨ B
+      return OR([
+        NEG(eliminarImplicacoes(ast.left)),
+        eliminarImplicacoes(ast.right),
+      ]);
+
     case TokenType.BICONDITIONAL:
-      return {
-        ...node,
-        left: substituteVar(node.left, oldName, newName),
-        right: substituteVar(node.right, oldName, newName),
-      };
+      // A ↔ B ≡ (A → B) ∧ (B → A)
+      return AND([
+        OR([
+          NEG(eliminarImplicacoes(ast.left)),
+          eliminarImplicacoes(ast.right),
+        ]),
+        OR([
+          NEG(eliminarImplicacoes(ast.right)),
+          eliminarImplicacoes(ast.left),
+        ]),
+      ]);
 
-    case TokenType.FORALL:
-    case TokenType.EXISTS: {
-      let variable = node.variable.literal;
-      if (variable === oldName) return node; // bound variable, shadowed
-      return {
-        ...node,
-        child: substituteVar(node.child, oldName, newName),
-      };
-    }
-
-    default:
-      return node;
-  }
-}
-
-export function transform(node) {
-  return eliminateImplicationAndBiconditional(node);
-}
-
-export function eliminateImplicationAndBiconditional(node) {
-  if (!node) return null;
-
-  switch (node.type) {
-    case TokenType.VAR:
-    case TokenType.PREDICATE:
-    case TokenType.TRUE:
-    case TokenType.FALSE: {
-      return node;
-    }
-
-    case TokenType.NEGATION: {
-      const C = eliminateImplicationAndBiconditional(node.child);
-      return NEG(C);
-    }
-
-    case TokenType.IMPLIES: {
-      // A -> B === ~A v B
-      const A = eliminateImplicationAndBiconditional(node.left);
-      const B = eliminateImplicationAndBiconditional(node.right);
-
-      return OR([NEG(A), eliminateImplicationAndBiconditional(B)]);
-    }
-
-    case TokenType.BICONDITIONAL: {
-      // A <-> B === (A ^ B) v (~A ^ ~B)
-      const A = eliminateImplicationAndBiconditional(node.left);
-      const B = eliminateImplicationAndBiconditional(node.right);
-
-      return OR([AND([A, B]), AND([NEG(A), NEG(B)])]);
-    }
-
-    case TokenType.CONJUNCTION:
-    case TokenType.DISJUNCTION: {
-      return createNode(node.type, {
-        children: node.children.map(eliminateImplicationAndBiconditional),
-      });
-    }
-
-    case TokenType.FORALL:
-    case TokenType.EXISTS: {
-      return createNode(node.type, {
-        variable: node.variable,
-        child: eliminateImplicationAndBiconditional(node.child),
-      });
-    }
-  }
-}
-
-export function pushNegationsInwards(node) {
-  if (!node) return null;
-
-  switch (node.type) {
-    case TokenType.VAR:
-    case TokenType.PREDICATE:
-    case TokenType.TRUE:
-    case TokenType.FALSE:
-      return node;
-
-    case TokenType.NEGATION: {
-      const child = node.child;
-
-      if ([TokenType.VAR, TokenType.PREDICATE].includes(child.type))
-        return node;
-
-      // Double negation
-      if (child.type === TokenType.NEGATION)
-        return pushNegationsInwards(child.child);
-
-      // Quantifiers
-      if (child.type === TokenType.FORALL)
-        return pushNegationsInwards(EXISTS(child.variable, NEG(child.child)));
-      if (child.type === TokenType.EXISTS)
-        return pushNegationsInwards(FORALL(child.variable, NEG(child.child)));
-
-      // De Morgan
-      if (child.type === TokenType.CONJUNCTION)
-        return pushNegationsInwards(OR(child.children.map((c) => NEG(c))));
-      if (child.type === TokenType.DISJUNCTION)
-        return pushNegationsInwards(AND(child.children.map((c) => NEG(c))));
-    }
+    case TokenType.NEGATION:
+      return NEG(eliminarImplicacoes(ast.child));
 
     case TokenType.CONJUNCTION:
     case TokenType.DISJUNCTION:
-      return createNode(node.type, {
-        children: node.children.map(pushNegationsInwards),
-      });
+      const children = ast.children
+        ? ast.children.map(eliminarImplicacoes)
+        : [eliminarImplicacoes(ast.left), eliminarImplicacoes(ast.right)];
+      return { ...ast, children };
 
     case TokenType.FORALL:
     case TokenType.EXISTS:
-      return createNode(node.type, {
-        variable: node.variable,
-        child: pushNegationsInwards(node.child),
-      });
+      return {
+        ...ast,
+        child: eliminarImplicacoes(ast.child),
+      };
 
     default:
-      throw new Error("Unknown node type: " + node.type);
+      return ast;
   }
 }
 
-export function distributeFNC(node) {
-  if (!node) return null;
+function moverNegacoesParaDentro(ast) {
+  if (!ast) return ast;
 
-  // Handle quantifiers: just push inside
-  if ([TokenType.FORALL, TokenType.EXISTS].includes(node.type)) {
-    return createNode(node.type, {
-      variable: node.variable,
-      child: distributeFNC(node.child),
-    });
-  }
+  switch (ast.type) {
+    case TokenType.NEGATION:
+      const child = ast.child;
 
-  if (node.type === TokenType.DISJUNCTION) {
-    // Find AND child to distribute
-    const andChild = node.children.find(
-      (c) => c.type === TokenType.CONJUNCTION
-    );
+      // Dupla negação
+      if (child.type === TokenType.NEGATION) {
+        return moverNegacoesParaDentro(child.child);
+      }
 
-    if (andChild) {
-      const rest = node.children.filter((c) => c !== andChild);
-      const distributed = andChild.children.map((c) =>
-        distributeFNC(OR([c, ...rest]))
-      );
-      return AND(flattenChildren(distributed));
-    }
-  }
+      // Leis de De Morgan
+      if (child.type === TokenType.CONJUNCTION) {
+        const children = child.children
+          ? child.children.map((c) => NEG(moverNegacoesParaDentro(c)))
+          : [
+              NEG(moverNegacoesParaDentro(child.left)),
+              NEG(moverNegacoesParaDentro(child.right)),
+            ];
+        return OR(children);
+      }
 
-  if ([TokenType.CONJUNCTION, TokenType.DISJUNCTION].includes(node.type)) {
-    const newChildren = node.children.map(distributeFNC);
-    return createNode(node.type, { children: flattenChildren(newChildren) });
-  }
+      if (child.type === TokenType.DISJUNCTION) {
+        const children = child.children
+          ? child.children.map((c) => NEG(moverNegacoesParaDentro(c)))
+          : [
+              NEG(moverNegacoesParaDentro(child.left)),
+              NEG(moverNegacoesParaDentro(child.right)),
+            ];
+        return AND(children);
+      }
 
-  return node;
-}
+      // Negação de quantificadores
+      if (child.type === TokenType.FORALL) {
+        return {
+          type: TokenType.EXISTS,
+          variable: child.variable,
+          child: NEG(moverNegacoesParaDentro(child.child)),
+        };
+      }
 
-export function distributeFND(node) {
-  if (!node) return null;
+      if (child.type === TokenType.EXISTS) {
+        return {
+          type: TokenType.FORALL,
+          variable: child.variable,
+          child: NEG(moverNegacoesParaDentro(child.child)),
+        };
+      }
 
-  if ([TokenType.FORALL, TokenType.EXISTS].includes(node.type)) {
-    return createNode(node.type, {
-      variable: node.variable,
-      child: distributeFND(node.child),
-    });
-  }
-
-  if (node.type === TokenType.CONJUNCTION) {
-    const orChild = node.children.find((c) => c.type === TokenType.DISJUNCTION);
-
-    if (orChild) {
-      const rest = node.children.filter((c) => c !== orChild);
-      const distributed = orChild.children.map((c) =>
-        distributeFND(AND([c, ...rest]))
-      );
-      return OR(flattenChildren(distributed));
-    }
-  }
-
-  if ([TokenType.CONJUNCTION, TokenType.DISJUNCTION].includes(node.type)) {
-    const newChildren = node.children.map(distributeFND);
-    return createNode(node.type, { children: flattenChildren(newChildren) });
-  }
-
-  return node;
-}
-
-export function toPrenex(node) {
-  if (!node) return null;
-
-  switch (node.type) {
-    case TokenType.VAR:
-    case TokenType.TRUE:
-    case TokenType.FALSE:
-      return node;
-
-    case TokenType.NEGATION: {
-      const child = toPrenex(node.child);
-      return { ...node, child };
-    }
+      return NEG(moverNegacoesParaDentro(child));
 
     case TokenType.CONJUNCTION:
-    case TokenType.DISJUNCTION: {
-      const children = node.children.map(toPrenex);
-
-      // Collect quantifiers from children
-      let quantifiers = [];
-      let processed = [];
-
-      for (let c of children) {
-        if ([TokenType.FORALL, TokenType.EXISTS].includes(c.type)) {
-          let inner = c;
-
-          while ([TokenType.FORALL, TokenType.EXISTS].includes(inner.type)) {
-            let qVar = inner.variable.literal;
-
-            // Check for capture risk
-            for (let other of children) {
-              if (other !== inner) {
-                const fv = freeVars(other);
-                if (fv.has(qVar)) {
-                  // conflict → rename
-                  let fresh = freshVar(qVar);
-                  inner = {
-                    ...inner,
-                    variable: { ...inner.variable, literal: fresh },
-                    child: substituteVar(inner.child, qVar, fresh),
-                  };
-                  qVar = fresh;
-                }
-              }
-            }
-
-            quantifiers.push({
-              type: inner.type,
-              variable: inner.variable,
-            });
-            inner = inner.child;
-          }
-          processed.push(inner);
-        } else {
-          processed.push(c);
-        }
-      }
-
-      // Rebuild connective
-      let base = { ...node, children: processed };
-
-      // Wrap quantifiers outward in order
-      for (let q of quantifiers.reverse()) {
-        base = {
-          type: q.type,
-          variable: q.variable,
-          child: base,
-        };
-      }
-
-      return base;
-    }
-
-    case TokenType.IMPLICATION:
-    case TokenType.BICONDITIONAL: {
-      const left = toPrenex(node.left);
-      const right = toPrenex(node.right);
-
-      // Pull quantifiers from both sides
-      let quantifiers = [];
-      let l = left;
-      let r = right;
-
-      function extractQuantifiers(n) {
-        let qs = [];
-        let inner = n;
-        while ([TokenType.FORALL, TokenType.EXISTS].includes(inner.type)) {
-          qs.push({ type: inner.type, variable: inner.variable });
-          inner = inner.child;
-        }
-        return { qs, inner };
-      }
-
-      const lq = extractQuantifiers(l);
-      const rq = extractQuantifiers(r);
-
-      l = lq.inner;
-      r = rq.inner;
-
-      quantifiers = [...lq.qs, ...rq.qs];
-
-      let base = { ...node, left: l, right: r };
-
-      for (let q of quantifiers.reverse()) {
-        base = {
-          type: q.type,
-          variable: q.variable,
-          child: base,
-        };
-      }
-
-      return base;
-    }
+    case TokenType.DISJUNCTION:
+      const children = ast.children
+        ? ast.children.map(moverNegacoesParaDentro)
+        : [
+            moverNegacoesParaDentro(ast.left),
+            moverNegacoesParaDentro(ast.right),
+          ];
+      return { ...ast, children };
 
     case TokenType.FORALL:
-    case TokenType.EXISTS: {
-      const child = toPrenex(node.child);
-      return { ...node, child };
-    }
+    case TokenType.EXISTS:
+      return {
+        ...ast,
+        child: moverNegacoesParaDentro(ast.child),
+      };
 
     default:
-      return node;
+      return ast;
   }
 }
 
-export function transformationPipeline(ast) {
-  let transformed = eliminateImplicationAndBiconditional(ast);
-  transformed = pushNegationsInwards(transformed);
-  transformed = toPrenex(transformed);
-  return transformed;
+function padronizarVariaveis(
+  ast,
+  mapaVariaveis = new Map(),
+  contador = { value: 0 }
+) {
+  if (!ast) return ast;
+
+  switch (ast.type) {
+    case TokenType.VAR:
+      if (mapaVariaveis.has(ast.name)) {
+        return { ...ast, name: mapaVariaveis.get(ast.name) };
+      }
+      return ast;
+
+    case TokenType.PREDICATE:
+      const novosArgs = ast.args.map((arg) => {
+        if (mapaVariaveis.has(arg)) {
+          return mapaVariaveis.get(arg);
+        }
+        return arg;
+      });
+      return { ...ast, args: novosArgs };
+
+    case TokenType.FORALL:
+    case TokenType.EXISTS:
+      const novaVariavel = `x_${contador.value++}`;
+      const novoMapa = new Map(mapaVariaveis);
+      novoMapa.set(ast.variable, novaVariavel);
+
+      return {
+        ...ast,
+        variable: novaVariavel,
+        child: padronizarVariaveis(ast.child, novoMapa, contador),
+      };
+
+    case TokenType.NEGATION:
+      return NEG(padronizarVariaveis(ast.child, mapaVariaveis, contador));
+
+    case TokenType.CONJUNCTION:
+    case TokenType.DISJUNCTION:
+      const children = ast.children
+        ? ast.children.map((child) =>
+            padronizarVariaveis(child, mapaVariaveis, contador)
+          )
+        : [
+            padronizarVariaveis(ast.left, mapaVariaveis, contador),
+            padronizarVariaveis(ast.right, mapaVariaveis, contador),
+          ];
+      return { ...ast, children };
+
+    default:
+      return ast;
+  }
 }
 
-export function toFNC(ast) {
-  return distributeFNC(transformationPipeline(ast));
+function formaPrenex(ast) {
+  if (!ast) return ast;
+
+  // Extrai quantificadores recursivamente
+  function extrairQuantificadores(node, quantificadores = []) {
+    if (node.type === TokenType.FORALL || node.type === TokenType.EXISTS) {
+      quantificadores.push({
+        type: node.type,
+        variable: node.variable,
+      });
+      return extrairQuantificadores(node.child, quantificadores);
+    }
+
+    return { matriz: node, quantificadores };
+  }
+
+  // Aplica quantificadores à matriz
+  function aplicarQuantificadores(matriz, quantificadores) {
+    if (quantificadores.length === 0) return matriz;
+
+    const [primeiro, ...resto] = quantificadores;
+    const child = aplicarQuantificadores(matriz, resto);
+
+    return {
+      type: primeiro.type,
+      variable: primeiro.variable,
+      child,
+    };
+  }
+
+  const { matriz, quantificadores } = extrairQuantificadores(ast);
+  return aplicarQuantificadores(matriz, quantificadores);
 }
 
-export function toFND(ast) {
-  return distributeFND(transformationPipeline(ast));
+function skolemizacao(ast) {
+  if (!ast) return ast;
+
+  function skolemizarRecursivamente(
+    node,
+    quantificadoresUniversais = [],
+    funcoesSkolem = new Map()
+  ) {
+    switch (node.type) {
+      case TokenType.EXISTS:
+        // Cria função de Skolem para variável existencial
+        const nomeFuncao = `f_${funcoesSkolem.size + 1}`;
+        const argsSkolem = quantificadoresUniversais.map((q) => q.variable);
+
+        // Substitui variável existencial por função de Skolem
+        function substituirVariavel(subNode) {
+          if (
+            subNode.type === TokenType.VAR &&
+            subNode.name === node.variable
+          ) {
+            return {
+              type: TokenType.PREDICATE,
+              name: nomeFuncao,
+              args: argsSkolem,
+            };
+          }
+
+          if (subNode.type === TokenType.PREDICATE) {
+            return {
+              ...subNode,
+              args: subNode.args.map((arg) =>
+                arg === node.variable
+                  ? nomeFuncao + "(" + argsSkolem.join(",") + ")"
+                  : arg
+              ),
+            };
+          }
+
+          if (subNode.type === TokenType.NEGATION) {
+            return NEG(substituirVariavel(subNode.child));
+          }
+
+          if (
+            subNode.type === TokenType.CONJUNCTION ||
+            subNode.type === TokenType.DISJUNCTION
+          ) {
+            const children = subNode.children
+              ? subNode.children.map(substituirVariavel)
+              : [
+                  substituirVariavel(subNode.left),
+                  substituirVariavel(subNode.right),
+                ];
+            return { ...subNode, children };
+          }
+
+          if (
+            subNode.type === TokenType.FORALL ||
+            subNode.type === TokenType.EXISTS
+          ) {
+            return {
+              ...subNode,
+              child: substituirVariavel(subNode.child),
+            };
+          }
+
+          return subNode;
+        }
+
+        return skolemizarRecursivamente(
+          substituirVariavel(node.child),
+          quantificadoresUniversais,
+          funcoesSkolem
+        );
+
+      case TokenType.FORALL:
+        return {
+          ...node,
+          child: skolemizarRecursivamente(
+            node.child,
+            [...quantificadoresUniversais, node],
+            funcoesSkolem
+          ),
+        };
+
+      case TokenType.NEGATION:
+        return NEG(
+          skolemizarRecursivamente(
+            node.child,
+            quantificadoresUniversais,
+            funcoesSkolem
+          )
+        );
+
+      case TokenType.CONJUNCTION:
+      case TokenType.DISJUNCTION:
+        const children = node.children
+          ? node.children.map((child) =>
+              skolemizarRecursivamente(
+                child,
+                quantificadoresUniversais,
+                funcoesSkolem
+              )
+            )
+          : [
+              skolemizarRecursivamente(
+                node.left,
+                quantificadoresUniversais,
+                funcoesSkolem
+              ),
+              skolemizarRecursivamente(
+                node.right,
+                quantificadoresUniversais,
+                funcoesSkolem
+              ),
+            ];
+        return { ...node, children };
+
+      default:
+        return node;
+    }
+  }
+
+  return skolemizarRecursivamente(ast);
+}
+
+function eliminarQuantificadoresUniversais(ast) {
+  if (!ast) return ast;
+
+  switch (ast.type) {
+    case TokenType.FORALL:
+      return eliminarQuantificadoresUniversais(ast.child);
+
+    case TokenType.NEGATION:
+      return NEG(eliminarQuantificadoresUniversais(ast.child));
+
+    case TokenType.CONJUNCTION:
+    case TokenType.DISJUNCTION:
+      const children = ast.children
+        ? ast.children.map(eliminarQuantificadoresUniversais)
+        : [
+            eliminarQuantificadoresUniversais(ast.left),
+            eliminarQuantificadoresUniversais(ast.right),
+          ];
+      return { ...ast, children };
+
+    default:
+      return ast;
+  }
+}
+
+function converterFNC(ast) {
+  // Usa o simplificador existente para FNC
+  return simplifyFNC(ast);
+}
+
+function obterFormaClausal(ast) {
+  if (ast.type === TokenType.TRUE) return "⊤";
+  if (ast.type === TokenType.FALSE) return "⊥";
+
+  // Extrai cláusulas da FNC
+  function extrairClausulas(node) {
+    if (node.type === TokenType.CONJUNCTION) {
+      const clausulas = [];
+
+      if (node.children) {
+        for (const child of node.children) {
+          clausulas.push(...extrairClausulas(child));
+        }
+      } else {
+        clausulas.push(...extrairClausulas(node.left));
+        clausulas.push(...extrairClausulas(node.right));
+      }
+
+      return clausulas;
+    }
+
+    if (node.type === TokenType.DISJUNCTION) {
+      const literais = [];
+
+      if (node.children) {
+        for (const child of node.children) {
+          literais.push(...extrairClausulas(child));
+        }
+      } else {
+        literais.push(...extrairClausulas(node.left));
+        literais.push(...extrairClausulas(node.right));
+      }
+
+      return [{ tipo: "disjunção", literais }];
+    }
+
+    if (node.type === TokenType.NEGATION) {
+      const childStr = extrairClausulas(node.child)[0];
+      return [`¬${childStr}`];
+    }
+
+    return [
+      node.type === TokenType.PREDICATE
+        ? `${node.name}(${node.args.join(", ")})`
+        : node.name,
+    ];
+  }
+
+  const clausulas = extrairClausulas(ast);
+  return clausulas
+    .map((c) => {
+      if (typeof c === "string") return c;
+      return c.literais.join(" ∨ ");
+    })
+    .join(" ∧ ");
+}
+
+function identificarClausulasDeHorn(formaClausal) {
+  if (formaClausal === "⊤" || formaClausal === "⊥") {
+    return formaClausal;
+  }
+
+  const clausulas = formaClausal.split(" ∧ ");
+  const hornClauses = [];
+
+  for (const clausula of clausulas) {
+    const literais = clausula.split(" ∨ ");
+    let positivos = 0;
+
+    for (const literal of literais) {
+      if (!literal.startsWith("¬")) {
+        positivos++;
+      }
+    }
+
+    if (positivos <= 1) {
+      hornClauses.push(clausula);
+    }
+  }
+
+  return hornClauses.join(" ∧ ") || "Nenhuma cláusula de Horn encontrada";
+}
+
+// Função principal para executar todas as transformações
+export function executarTransformacoesCompletas(ast) {
+  return transformarFormula(ast);
 }

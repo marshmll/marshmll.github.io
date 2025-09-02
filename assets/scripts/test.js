@@ -1,13 +1,6 @@
 import { tokenize } from "./modules/lexer.js";
 import { parse } from "./modules/parser.js";
-import {
-  distributeFNC,
-  distributeFND,
-  eliminateImplicationAndBiconditional,
-  normalizeAssociative,
-  pushNegationsInwards,
-  toPrenex,
-} from "./modules/transformer.js";
+import { executarTransformacoesCompletas } from "./modules/transformer.js";
 import { prettify } from "./modules/printer.js";
 import { simplifyFNC, simplifyFND } from "./modules/simplifier.js";
 
@@ -37,6 +30,18 @@ const examples = [
     input: "A \\leftrightarrow B",
     description: "Biconditional",
   },
+  {
+    input: "\\forall x \\exists y (P(x,y) \\land \\forall y R(x,y))",
+    description: "Nested quantifiers with variable conflict",
+  },
+  {
+    input: "\\exists x (P(x) \\land \\exists x Q(x))",
+    description: "Same variable in different scopes",
+  },
+  {
+    input: "\\forall x \\exists y \\forall x P(x,y)",
+    description: "Repeated variable in different quantifiers",
+  },
 ];
 
 function runExample(example) {
@@ -46,6 +51,14 @@ function runExample(example) {
 
   const consumer = tokenize(example.input);
   const ast = parse(consumer);
+
+  const passos = executarTransformacoesCompletas(ast);
+
+  console.log(passos);
+
+  return;
+
+  console.log(JSON.stringify(ast, null, 2));
 
   const norm = normalizeAssociative(ast);
   console.log("Normalizing by associativity:", prettify(norm));
