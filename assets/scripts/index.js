@@ -1,17 +1,6 @@
 import { tokenize } from "./modules/lexer.js";
 import { parse } from "./modules/parser.js";
-import { normalizeAssociative, toFNC, toFND } from "./modules/transformer.js";
-import { prettify } from "./modules/printer.js";
-import { simplifyFNC, simplifyFND } from "./modules/simplifier.js";
-
-// DOM elements
-const latexInput = document.getElementById("latex-input");
-const latexOutput = document.getElementById("latex-output");
-const calculateBtn = document.getElementById("calculate-btn");
-const cnfOutput = document.getElementById("fnc-output");
-const dnfOutput = document.getElementById("fnd-output");
-const exampleChips = document.querySelectorAll(".example-chip");
-const symbolContainer = document.getElementById("symbol-bg");
+import { executarTransformacoesCompletas } from "./modules/transformer.js";
 
 // Custom macro definitions for KaTeX
 const customMacros = {
@@ -25,16 +14,36 @@ const customMacros = {
   "\\implies": "\\to",
 };
 
-// ================= Floating Background Symbols =================
-const symbols = ["∧", "∨", "¬"];
-for (let i = 0; i < 25; i++) {
-  const sym = document.createElement("div");
-  sym.className = "symbol";
-  sym.innerText = symbols[Math.floor(Math.random() * symbols.length)];
-  sym.style.left = `${Math.random() * 100}vw`;
-  sym.style.fontSize = `${Math.random() * 24 + 12}px`;
-  sym.style.animationDuration = `${Math.random() * 15 + 10}s`;
-  symbolContainer.appendChild(sym);
+// Highlighted steps
+const HIGHLIGHTED_STEPS = [
+  "Forma Normal Conjuntiva Prenex",
+  "Forma Normal Disjuntiva Prenex",
+  "Forma Clausal",
+  "Cláusula de Horn",
+];
+
+// Theme management
+function initTheme() {
+  const savedTheme = localStorage.getItem("theme") || "light";
+  document.documentElement.setAttribute("data-theme", savedTheme);
+  updateThemeIcon(savedTheme);
+}
+
+function toggleTheme() {
+  const currentTheme = document.documentElement.getAttribute("data-theme");
+  const newTheme = currentTheme === "light" ? "dark" : "light";
+  document.documentElement.setAttribute("data-theme", newTheme);
+  localStorage.setItem("theme", newTheme);
+  updateThemeIcon(newTheme);
+}
+
+function updateThemeIcon(theme) {
+  const themeIcon = document.getElementById("theme-icon");
+  if (theme === "dark") {
+    themeIcon.className = "fas fa-sun";
+  } else {
+    themeIcon.className = "fas fa-moon";
+  }
 }
 
 // ================= Render LaTeX Function =================
@@ -42,8 +51,7 @@ function renderLatex(latexText, element) {
   try {
     element.innerHTML = ""; // clear previous
     if (!latexText.trim()) {
-      element.innerHTML =
-        '<span class="text-gray-400">Sua fórmula aparecerá aqui</span>';
+      element.innerHTML = `<span style="color: var(--text-light);">Sua fórmula aparecerá aqui</span>`;
       element.classList.remove("has-content");
       return;
     }
@@ -51,6 +59,7 @@ function renderLatex(latexText, element) {
     const container = document.createElement("div");
     container.className = "katex-container";
 
+    // Use KaTeX to render the LaTeX
     katex.render(latexText, container, {
       displayMode: true,
       throwOnError: false,
@@ -60,32 +69,103 @@ function renderLatex(latexText, element) {
     element.appendChild(container);
     element.classList.add("has-content");
   } catch (error) {
-    element.innerHTML = `<div class="text-red-500 text-center p-4"><i class="fas fa-exclamation-circle mr-2"></i>Erro: ${error.message}</div>`;
+    element.innerHTML = `<div class="text-center p-4" style="color: var(--accent);"><i class="fas fa-exclamation-circle mr-2"></i>Erro: ${error.message}</div>`;
     element.classList.remove("has-content");
   }
 }
 
-// ================= Calculate Normal Forms =================
-function calculateNormalForms(formula) {
-  const consumer = tokenize(formula);
-  const node = parse(consumer);
-  const norm = normalizeAssociative(node);
-  const fncAst = toFNC(norm);
-  const fndAst = toFND(norm);
-  const simplifiedFnc = simplifyFNC(fncAst);
-  const simplifiedFnd = simplifyFND(fndAst);
+// ================= Display Steps =================
+function displaySteps(steps) {
+  const stepsContainer = document.getElementById("steps-content");
 
-  return {
-    fnc: prettify(simplifiedFnc),
-    fnd: prettify(simplifiedFnd),
-  };
+  // Clear previous content
+  stepsContainer.innerHTML = "";
+
+  // Create grid for steps
+  const grid = document.createElement("div");
+  grid.className = "steps-grid";
+  stepsContainer.appendChild(grid);
+
+  // Create cards for each step
+  steps.forEach((step, index) => {
+    const isHighlighted = HIGHLIGHTED_STEPS.includes(step.nome);
+
+    const stepCard = document.createElement("div");
+    stepCard.className = `step-card ${isHighlighted ? "highlighted" : ""}`;
+
+    // Set animation delay for staggered effect
+    stepCard.style.animationDelay = `${index * 0.1}s`;
+
+    stepCard.innerHTML = `
+      <div class="flex items-center mb-2">
+        <span class="step-number">${index + 1}</span>
+        <h3 class="text-md font-semibold">${step.nome}</h3>
+      </div>
+      <div class="step-content">
+        <button class="copy-btn" data-formula="${step.resultado.replace(
+          /"/g,
+          "&quot;"
+        )}">
+          <i class="fas fa-copy"></i>
+        </button>
+        <div class="step-result" id="step-${index}"></div>
+      </div>
+    `;
+
+    grid.appendChild(stepCard);
+
+    // Render the LaTeX for this step with a slight delay
+    setTimeout(() => {
+      renderLatex(step.resultado, document.getElementById(`step-${index}`));
+    }, 100 + index * 100);
+  });
+
+  // Add copy event listeners after a delay to ensure elements are rendered
+  setTimeout(() => {
+    document.querySelectorAll(".copy-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const formula = btn.getAttribute("data-formula");
+        copyToClipboard(formula);
+      });
+    });
+  }, 500);
+}
+
+// ================= Copy to Clipboard =================
+function copyToClipboard(text) {
+  navigator.clipboard
+    .writeText(text)
+    .then(() => {
+      // Show toast notification
+      const toast = document.getElementById("toast");
+      toast.classList.add("show");
+      setTimeout(() => {
+        toast.classList.remove("show");
+      }, 2000);
+    })
+    .catch((err) => {
+      console.error("Falha ao copiar texto: ", err);
+    });
 }
 
 // ================= Event Listeners =================
+const latexInput = document.getElementById("latex-input");
+const latexOutput = document.getElementById("latex-output");
+const calculateBtn = document.getElementById("calculate-btn");
+const exampleChips = document.querySelectorAll(".example-chip");
+const themeToggle = document.getElementById("theme-toggle");
+
+// Initialize theme
+initTheme();
+
+// Theme toggle
+themeToggle.addEventListener("click", toggleTheme);
+
 // Live LaTeX preview
-latexInput.addEventListener("input", () =>
-  renderLatex(latexInput.value, latexOutput)
-);
+latexInput.addEventListener("input", () => {
+  renderLatex(latexInput.value, latexOutput);
+});
 
 // Example chips
 exampleChips.forEach((chip) => {
@@ -95,31 +175,34 @@ exampleChips.forEach((chip) => {
   });
 });
 
-// Calculate button with smooth loading
+// Calculate button
 calculateBtn.addEventListener("click", () => {
   const formula = latexInput.value.trim();
   if (!formula) return;
 
-  // Show loading placeholders
-  cnfOutput.innerHTML =
-    '<div class="text-center text-gray-500 p-4 animate-pulse"><i class="fas fa-spinner fa-spin mr-2"></i>Calculando...</div>';
-  dnfOutput.innerHTML =
-    '<div class="text-center text-gray-500 p-4 animate-pulse"><i class="fas fa-spinner fa-spin mr-2"></i>Calculando...</div>';
+  // Show loading state
+  const stepsContainer = document.getElementById("steps-content");
+  stepsContainer.innerHTML = `
+    <div class="text-center p-8" style="color: var(--text-light);">
+      <i class="fas fa-spinner fa-spin text-xl mb-3" style="color: var(--primary);"></i>
+      <p>Processando transformações<span class="loading-dots"><span></span><span></span><span></span></span></p>
+    </div>`;
 
-  setTimeout(() => {
-    try {
-      const results = calculateNormalForms(formula);
-      renderLatex(results.fnc, cnfOutput);
-      renderLatex(results.fnd, dnfOutput);
-    } catch (error) {
-      const errMsg = `<div class="text-red-400 text-center p-4"><i class="fas fa-exclamation-circle mr-2"></i>Erro: ${error.message}</div>`;
-      cnfOutput.innerHTML = errMsg;
-      dnfOutput.innerHTML = errMsg;
-    }
-  }, 200); // small delay for smoothness
+  try {
+    const consumer = tokenize(formula);
+    const ast = parse(consumer);
+    const steps = executarTransformacoesCompletas(ast);
+    displaySteps(steps);
+  } catch (error) {
+    stepsContainer.innerHTML = `
+      <div class="text-center p-4" style="color: var(--accent);">
+        <i class="fas fa-exclamation-circle mr-2"></i>
+        Erro: ${error.message}
+      </div>`;
+  }
 });
 
 // Initial render
-document.addEventListener("DOMContentLoaded", () =>
-  renderLatex(latexInput.value, latexOutput)
-);
+document.addEventListener("DOMContentLoaded", () => {
+  renderLatex(latexInput.value, latexOutput);
+});

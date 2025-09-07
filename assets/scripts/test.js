@@ -42,6 +42,10 @@ const examples = [
     input: "\\forall x \\exists y \\forall x P(x,y)",
     description: "Repeated variable in different quantifiers",
   },
+  {
+    input: "(\\forall x (\\exists y P(x, y))) \\rightarrow (\\neg (\\exists z Q(z) \\rightarrow \\forall w R(w)))",
+    description: "Complex formula",
+  },
 ];
 
 function runExample(example) {

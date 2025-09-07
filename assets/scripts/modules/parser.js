@@ -172,6 +172,12 @@ function parsePrimary(consumer) {
     return createNode(token.type);
   }
 
+  if (token.type === TokenType.NEGATION) {
+    consumer.next();
+    const child = parseUnary(consumer);
+    return createNode(TokenType.NEGATION, { child });
+  }
+
   if (token.type === TokenType.UNKNOWN) {
     throw new Error(`Erro de sintaxe: ${token.literal}`);
   }
