@@ -21,7 +21,9 @@ export const TokenType = {
 
 export const LiteralTokenMap = {
   "\\land": TokenType.CONJUNCTION,
+  "\\wedge": TokenType.CONJUNCTION,
   "\\lor": TokenType.DISJUNCTION,
+  "\\vee": TokenType.DISJUNCTION,
   "\\rightarrow": TokenType.IMPLIES,
   "\\leftrightarrow": TokenType.BICONDITIONAL,
   "\\iff": TokenType.BICONDITIONAL,

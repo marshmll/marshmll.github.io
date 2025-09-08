@@ -1,5 +1,4 @@
 import { TokenType } from "./lexer.js";
-import { createNode } from "./parser.js";
 import { TRUE, FALSE, NEG, OR, AND } from "./transformer.js";
 
 const keyOf = (node) => JSON.stringify(node);
@@ -171,23 +170,26 @@ export function simplifyFNC(root) {
   // If any clause is FALSE => whole FNC is FALSE
   if (clauses.some((c) => c.kind === TokenType.FALSE)) return FALSE();
 
+  // Safety check: ensure all clauses have sets
+  const validClauses = clauses.filter((c) => c.kind === "CLAUSE" && c.set);
+
   // Subsumption: drop any clause that is a superset of another
   const kept = [];
-  for (let i = 0; i < clauses.length; i++) {
+  for (let i = 0; i < validClauses.length; i++) {
     let isSubsumed = false;
-    for (let j = 0; j < clauses.length; j++) {
+    for (let j = 0; j < validClauses.length; j++) {
       if (i === j) continue;
 
       // i ⊆ j means j is redundant (keep i, remove j). We'll handle by only dropping supersets.
       // Here we only mark i as subsumed if j ⊆ i (i is superset). So swap:
 
-      if (isSubset(clauses[j].set, clauses[i].set)) {
+      if (isSubset(validClauses[j].set, validClauses[i].set)) {
         // j ⊆ i => i is superset => drop i
         isSubsumed = true;
         break;
       }
     }
-    if (!isSubsumed) kept.push(clauses[i]);
+    if (!isSubsumed) kept.push(validClauses[i]);
   }
 
   if (kept.length === 0) return TRUE(); // all were TRUE or subsumed away
@@ -205,22 +207,25 @@ export function simplifyFND(root) {
   // Convert each term to normalized set of literals
   const terms = n.children.map(simplifyTermForFND).filter(Boolean); // drop FALSE terms
 
+  // Safety check: ensure all terms have sets
+  const validTerms = terms.filter((c) => c.kind === "TERM" && c.set);
+
   // If any term is TRUE => whole FND is TRUE
-  if (terms.some((t) => t.kind === TokenType.TRUE)) return TRUE();
+  if (validTerms.some((t) => t.kind === TokenType.TRUE)) return TRUE();
 
   // Subsumption: in FND, drop supersets (A ∨ (A ∧ B) = A)
   const kept = [];
-  for (let i = 0; i < terms.length; i++) {
+  for (let i = 0; i < validTerms.length; i++) {
     let isSubsumed = false;
-    for (let j = 0; j < terms.length; j++) {
+    for (let j = 0; j < validTerms.length; j++) {
       if (i === j) continue;
-      if (isSubset(terms[j].set, terms[i].set)) {
+      if (isSubset(validTerms[j].set, validTerms[i].set)) {
         // j ⊆ i => i is superset => drop i
         isSubsumed = true;
         break;
       }
     }
-    if (!isSubsumed) kept.push(terms[i]);
+    if (!isSubsumed) kept.push(validTerms[i]);
   }
 
   if (kept.length === 0) return FALSE(); // all terms false or subsumed (rare after above)
@@ -241,7 +246,7 @@ function simplifyClauseForFNC(node) {
     lits = node.children;
   else lits = [node];
 
-  // Keep only literals; simplify() should have ensured this, but be safe.
+  // Simplify each literal first
   lits = lits.map(simplify).filter(isLiteral);
 
   // If clause contains complementary literals => clause is TRUE
@@ -253,9 +258,12 @@ function simplifyClauseForFNC(node) {
 
   // Drop FALSE literals, dedup
   lits = lits.filter((l) => l.type !== TokenType.FALSE);
+
+  // Check if empty after filtering
+  if (lits.length === 0) return { kind: TokenType.FALSE };
+
   const set = new Set(lits.map(literalKey));
 
-  if (set.size === 0) return { kind: TokenType.FALSE }; // empty clause -> FALSE
   return { kind: "CLAUSE", set };
 }
 
@@ -280,14 +288,18 @@ function simplifyTermForFND(node) {
 
   // Drop TRUE literals, dedup
   lits = lits.filter((l) => l.type !== TokenType.TRUE);
+
+  // Check if empty after filtering
+  if (lits.length === 0) return { kind: TokenType.FALSE };
+
   const set = new Set(lits.map(literalKey));
 
-  if (set.size === 0) return { kind: TokenType.TRUE }; // empty conjunction -> TRUE
   return { kind: "TERM", set };
 }
 
 function isSubset(setA, setB) {
   // is A ⊆ B ? (sets are JS Set of literal keys)
+
   for (const a of setA) if (!setB.has(a)) return false;
   return true;
 }

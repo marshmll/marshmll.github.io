@@ -192,6 +192,9 @@ calculateBtn.addEventListener("click", () => {
     const consumer = tokenize(formula);
     const ast = parse(consumer);
     const steps = executarTransformacoesCompletas(ast);
+
+    console.log(steps);
+
     displaySteps(steps);
   } catch (error) {
     stepsContainer.innerHTML = `

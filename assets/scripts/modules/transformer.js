@@ -1,7 +1,7 @@
 import { TokenType } from "./lexer.js";
 import { createNode } from "./parser.js";
 import { prettify } from "./printer.js";
-import { simplifyFNC, simplifyFND } from "./simplifier.js";
+import { simplify, simplifyFNC, simplifyFND } from "./simplifier.js";
 
 // Funções auxiliares para criar nós AST
 export function AND(children) {
@@ -532,7 +532,14 @@ export function normalizarChildren(children) {
       c.type === TokenType.CONJUNCTION ||
       c.type === TokenType.DISJUNCTION
     ) {
-      flat.push(c);
+      // Flatten nested same-type operations
+      if (c.children) {
+        flat.push(...normalizarChildren(c.children));
+      } else if (c.left && c.right) {
+        flat.push(...normalizarChildren([c.left, c.right]));
+      } else {
+        flat.push(c);
+      }
     } else flat.push(c);
   }
   return flat;
@@ -541,7 +548,7 @@ export function normalizarChildren(children) {
 function distribuirFNC(node) {
   if (!node) return null;
 
-  // Handle quantifiers: just push inside
+  // Handle base cases and quantifiers first
   if ([TokenType.FORALL, TokenType.EXISTS].includes(node.type)) {
     return createNode(node.type, {
       variable: node.variable,
@@ -549,24 +556,49 @@ function distribuirFNC(node) {
     });
   }
 
-  if (node.type === TokenType.DISJUNCTION) {
-    // Find AND child to distribute
-    const andChild = node.children.find(
-      (c) => c.type === TokenType.CONJUNCTION
-    );
-
-    if (andChild) {
-      const rest = node.children.filter((c) => c !== andChild);
-      const distributed = andChild.children.map((c) =>
-        distribuirFNC(OR([c, ...rest]))
-      );
-      return AND(normalizarChildren(distributed));
-    }
+  if (
+    node.type === TokenType.VAR ||
+    node.type === TokenType.PREDICATE ||
+    node.type === TokenType.TRUE ||
+    node.type === TokenType.FALSE ||
+    node.type === TokenType.NEGATION
+  ) {
+    return node;
   }
 
-  if ([TokenType.CONJUNCTION, TokenType.DISJUNCTION].includes(node.type)) {
-    const newChildren = node.children.map(distribuirFNC);
-    return createNode(node.type, { children: normalizarChildren(newChildren) });
+  // Recursively distribute children
+  const children = extractAllChildren(node).map(distribuirFNC);
+
+  if (node.type === TokenType.DISJUNCTION) {
+    // Look for conjunctions to distribute over
+    const conjunctions = [];
+    const nonConjunctions = [];
+
+    for (const child of children) {
+      if (child.type === TokenType.CONJUNCTION) {
+        conjunctions.push(child);
+      } else {
+        nonConjunctions.push(child);
+      }
+    }
+
+    if (conjunctions.length === 0) {
+      return OR(children);
+    }
+
+    // Distribute: (A ∧ B) ∨ C → (A ∨ C) ∧ (B ∨ C)
+    const firstConjunction = conjunctions[0];
+    const remaining = [...nonConjunctions, ...conjunctions.slice(1)];
+
+    const distributed = firstConjunction.children.map((conjChild) =>
+      distribuirFNC(OR([conjChild, ...remaining]))
+    );
+
+    return AND(distributed);
+  }
+
+  if (node.type === TokenType.CONJUNCTION) {
+    return AND(children);
   }
 
   return node;
@@ -575,6 +607,7 @@ function distribuirFNC(node) {
 function distribuirFND(node) {
   if (!node) return null;
 
+  // Handle base cases and quantifiers first
   if ([TokenType.FORALL, TokenType.EXISTS].includes(node.type)) {
     return createNode(node.type, {
       variable: node.variable,
@@ -582,32 +615,68 @@ function distribuirFND(node) {
     });
   }
 
-  if (node.type === TokenType.CONJUNCTION) {
-    const orChild = node.children.find((c) => c.type === TokenType.DISJUNCTION);
-
-    if (orChild) {
-      const rest = node.children.filter((c) => c !== orChild);
-      const distributed = orChild.children.map((c) =>
-        distribuirFND(AND([c, ...rest]))
-      );
-      return OR(normalizarChildren(distributed));
-    }
+  if (
+    node.type === TokenType.VAR ||
+    node.type === TokenType.PREDICATE ||
+    node.type === TokenType.TRUE ||
+    node.type === TokenType.FALSE ||
+    node.type === TokenType.NEGATION
+  ) {
+    return node;
   }
 
-  if ([TokenType.CONJUNCTION, TokenType.DISJUNCTION].includes(node.type)) {
-    const newChildren = node.children.map(distribuirFND);
-    return createNode(node.type, { children: normalizarChildren(newChildren) });
+  // Recursively distribute children
+  const children = extractAllChildren(node).map(distribuirFND);
+
+  if (node.type === TokenType.CONJUNCTION) {
+    // Look for disjunctions to distribute over
+    const disjunctions = [];
+    const nonDisjunctions = [];
+
+    for (const child of children) {
+      if (child.type === TokenType.DISJUNCTION) {
+        disjunctions.push(child);
+      } else {
+        nonDisjunctions.push(child);
+      }
+    }
+
+    if (disjunctions.length === 0) {
+      return AND(children);
+    }
+
+    // Distribute: (A ∨ B) ∧ C → (A ∧ C) ∨ (B ∧ C)
+    const firstDisjunction = disjunctions[0];
+    const remaining = [...nonDisjunctions, ...disjunctions.slice(1)];
+
+    const distributed = firstDisjunction.children.map((disjChild) =>
+      distribuirFND(AND([disjChild, ...remaining]))
+    );
+
+    return OR(distributed);
+  }
+
+  if (node.type === TokenType.DISJUNCTION) {
+    return OR(children);
   }
 
   return node;
 }
 
 function converterFNC(ast) {
-  return simplifyFNC(distribuirFNC(ast));
+  const distributed = distribuirFNC(ast);
+  return simplifyFNC(distributed);
 }
 
 function converterFND(ast) {
-  return simplifyFND(distribuirFND(ast));
+  const distributed = distribuirFND(ast);
+  return simplifyFND(distributed);
+}
+
+function extractAllChildren(node) {
+  if (node.children) return node.children;
+  if (node.left && node.right) return [node.left, node.right];
+  return [node];
 }
 
 function normalizarArvoreBinariaParaNAria(ast) {
