@@ -1,62 +1,68 @@
 import { TokenType } from "./lexer.js";
 import { TRUE, FALSE, NEG, OR, AND } from "./transformer.js";
 
-const keyOf = (node) => JSON.stringify(node);
+// Gera uma chave única para um nó baseada na sua estrutura JSON
+const getNodeKey = (node) => JSON.stringify(node);
 
-// Is node a literal? (VAR, TRUE/FALSE, or NEGATION of atomic)
-function isLiteral(n) {
-  if (!n) return false;
-  if (n.type === TokenType.TRUE || n.type === TokenType.FALSE) return true;
-  if (n.type === TokenType.VAR) return true;
-  if (n.type === TokenType.PREDICATE) return true;
-  if (n.type === TokenType.NEGATION) {
-    const c = n.child;
+// Verifica se um nó é um literal (VAR, TRUE/FALSE, PREDICATE ou negação de atômico)
+function isLiteral(node) {
+  if (!node) return false;
+  if (node.type === TokenType.TRUE || node.type === TokenType.FALSE)
+    return true;
+  if (node.type === TokenType.VAR) return true;
+  if (node.type === TokenType.PREDICATE) return true;
+  if (node.type === TokenType.NEGATION) {
+    const childNode = node.child;
     return (
-      c.type === TokenType.VAR ||
-      c.type === TokenType.TRUE ||
-      c.type === TokenType.FALSE ||
-      c.type === TokenType.PREDICATE
+      childNode.type === TokenType.VAR ||
+      childNode.type === TokenType.TRUE ||
+      childNode.type === TokenType.FALSE ||
+      childNode.type === TokenType.PREDICATE
     );
   }
   return false;
 }
 
-function literalKey(n) {
-  if (n.type === TokenType.NEGATION) return "!" + keyOf(n.child);
-  return keyOf(n);
+// Gera chave para literal, tratando negações com prefixo "!"
+function getLiteralKey(node) {
+  if (node.type === TokenType.NEGATION) return "!" + getNodeKey(node.child);
+  return getNodeKey(node);
 }
 
-function areComplementary(a, b) {
+// Verifica se dois literais são complementares (um é negação do outro)
+function areComplementary(nodeA, nodeB) {
   return (
-    literalKey(a) === "!" + literalKey(b) ||
-    literalKey(b) === "!" + literalKey(a)
+    getLiteralKey(nodeA) === "!" + getLiteralKey(nodeB) ||
+    getLiteralKey(nodeB) === "!" + getLiteralKey(nodeA)
   );
 }
 
-// Flatten nested same-type nodes (A ∧ (B ∧ C)) -> (A ∧ B ∧ C)
-function flattenSame(opType, children) {
-  const out = [];
-  for (const c of children) {
-    if (c.type === opType && c.children) out.push(...c.children);
-    else out.push(c);
+// Achata nós aninhados do mesmo tipo (A ∧ (B ∧ C)) -> (A ∧ B ∧ C)
+function flattenSameType(operatorType, childrenNodes) {
+  const flattenedChildren = [];
+  for (const child of childrenNodes) {
+    if (child.type === operatorType && child.children)
+      flattenedChildren.push(...child.children);
+    else flattenedChildren.push(child);
   }
-  return out;
+  return flattenedChildren;
 }
 
-// Deduplicate array of nodes structurally
-function uniqNodes(nodes) {
-  const seen = new Set();
-  const out = [];
-  for (const n of nodes) {
-    const k = keyOf(n);
-    if (!seen.has(k)) {
-      seen.add(k);
-      out.push(n);
+// Remove nós duplicados estruturalmente de um array
+function removeDuplicateNodes(nodes) {
+  const seenKeys = new Set();
+  const uniqueNodes = [];
+  for (const node of nodes) {
+    const nodeKey = getNodeKey(node);
+    if (!seenKeys.has(nodeKey)) {
+      seenKeys.add(nodeKey);
+      uniqueNodes.push(node);
     }
   }
-  return out;
+  return uniqueNodes;
 }
 
+// Função principal de simplificação de expressões lógicas
 export function simplify(node) {
   if (!node) return null;
 
@@ -68,85 +74,84 @@ export function simplify(node) {
       return node;
 
     case TokenType.NEGATION: {
-      const c = simplify(node.child);
-      // ~~A => A
-      if (c.type === TokenType.NEGATION) return simplify(c.child);
+      const simplifiedChild = simplify(node.child);
+      // ~~A => A (dupla negação)
+      if (simplifiedChild.type === TokenType.NEGATION)
+        return simplify(simplifiedChild.child);
       // ~TRUE = FALSE ; ~FALSE = TRUE
-      if (c.type === TokenType.TRUE) return FALSE();
-      if (c.type === TokenType.FALSE) return TRUE();
-      return NEG(c);
+      if (simplifiedChild.type === TokenType.TRUE) return FALSE();
+      if (simplifiedChild.type === TokenType.FALSE) return TRUE();
+      return NEG(simplifiedChild);
     }
 
     case TokenType.CONJUNCTION: {
-      // simplify children first
-      let kids = (node.children ?? [node.left, node.right])
+      // Simplifica os filhos primeiro
+      let childNodes = (node.children ?? [node.left, node.right])
         .filter(Boolean)
         .map(simplify);
 
-      // Flatten and dedup
-      kids = flattenSame(TokenType.CONJUNCTION, kids);
-      kids = uniqNodes(kids);
+      // Achata e remove duplicatas
+      childNodes = flattenSameType(TokenType.CONJUNCTION, childNodes);
+      childNodes = removeDuplicateNodes(childNodes);
 
-      // Identity & domination
-      // A ∧ TRUE = A ; A ∧ FALSE = FALSE
-      if (kids.some((k) => k.type === TokenType.FALSE)) return FALSE();
-      kids = kids.filter((k) => k.type !== TokenType.TRUE);
+      // Identidade e dominação: A ∧ TRUE = A ; A ∧ FALSE = FALSE
+      if (childNodes.some((child) => child.type === TokenType.FALSE))
+        return FALSE();
+      childNodes = childNodes.filter((child) => child.type !== TokenType.TRUE);
 
-      // Short-circuit: empty ∧ => TRUE
-      if (kids.length === 0) return TRUE();
-      if (kids.length === 1) return kids[0];
+      // Caso especial: conjunção vazia = TRUE
+      if (childNodes.length === 0) return TRUE();
+      if (childNodes.length === 1) return childNodes[0];
 
-      // If any child is disjunction, we don't distribute here (that's transformer’s job).
-      // But we CAN do literal-level contradiction inside pure-term conjunctions.
-      // If all are literals, check L ∧ ~L => FALSE
-      const allLits = kids.every(isLiteral);
-      if (allLits) {
-        for (let i = 0; i < kids.length; i++) {
-          for (let j = i + 1; j < kids.length; j++) {
-            if (areComplementary(kids[i], kids[j])) return FALSE();
+      // Verifica contradições literais em conjunções puras
+      const allLiterals = childNodes.every(isLiteral);
+      if (allLiterals) {
+        for (let i = 0; i < childNodes.length; i++) {
+          for (let j = i + 1; j < childNodes.length; j++) {
+            if (areComplementary(childNodes[i], childNodes[j])) return FALSE();
           }
         }
       }
 
-      // If this is a FND term (∧ of literals), we keep it as is.
-      return AND(kids);
+      // Mantém como está se for um termo FND (∧ de literais)
+      return AND(childNodes);
     }
 
     case TokenType.DISJUNCTION: {
-      let kids = (node.children ?? [node.left, node.right])
+      let childNodes = (node.children ?? [node.left, node.right])
         .filter(Boolean)
         .map(simplify);
 
-      kids = flattenSame(TokenType.DISJUNCTION, kids);
-      kids = uniqNodes(kids);
+      childNodes = flattenSameType(TokenType.DISJUNCTION, childNodes);
+      childNodes = removeDuplicateNodes(childNodes);
 
-      // Identity & domination
-      // A ∨ FALSE = A ; A ∨ TRUE = TRUE
-      if (kids.some((k) => k.type === TokenType.TRUE)) return TRUE();
-      kids = kids.filter((k) => k.type !== TokenType.FALSE);
+      // Identidade e dominação: A ∨ FALSE = A ; A ∨ TRUE = TRUE
+      if (childNodes.some((child) => child.type === TokenType.TRUE))
+        return TRUE();
+      childNodes = childNodes.filter((child) => child.type !== TokenType.FALSE);
 
-      if (kids.length === 0) return FALSE();
-      if (kids.length === 1) return kids[0];
+      if (childNodes.length === 0) return FALSE();
+      if (childNodes.length === 1) return childNodes[0];
 
-      // If all literals, detect tautology L ∨ ~L => TRUE
-      const allLits = kids.every(isLiteral);
-      if (allLits) {
-        for (let i = 0; i < kids.length; i++) {
-          for (let j = i + 1; j < kids.length; j++) {
-            if (areComplementary(kids[i], kids[j])) return TRUE();
+      // Detecta tautologia em disjunções de literais: L ∨ ~L => TRUE
+      const allLiterals = childNodes.every(isLiteral);
+      if (allLiterals) {
+        for (let i = 0; i < childNodes.length; i++) {
+          for (let j = i + 1; j < childNodes.length; j++) {
+            if (areComplementary(childNodes[i], childNodes[j])) return TRUE();
           }
         }
       }
 
-      return OR(kids);
+      return OR(childNodes);
     }
 
-    // pass-through for quantifiers
+    // Pass-through para quantificadores (mantém estrutura)
     case TokenType.FORALL:
     case TokenType.EXISTS:
       return { ...node, child: simplify(node.child) };
 
-    // Implications/biconditionals should be gone before simplify; just recurse defensively
+    // Implicações e bicondicionais deveriam ter sido removidas antes da simplificação
     case TokenType.IMPLIES:
     case TokenType.BICONDITIONAL:
       return {
@@ -156,165 +161,179 @@ export function simplify(node) {
       };
 
     default:
-      throw new Error("Unknown node type in simplify: " + node.type);
+      throw new Error("Tipo de nó desconhecido em simplify: " + node.type);
   }
 }
 
-export function simplifyFNC(root) {
-  const n = simplify(root);
-  if (n.type !== TokenType.CONJUNCTION) return n; // already a single clause or constant
+// Simplificação específica para Forma Normal Conjuntiva (FNC)
+export function simplifyFNC(rootNode) {
+  const simplifiedNode = simplify(rootNode);
+  if (simplifiedNode.type !== TokenType.CONJUNCTION) return simplifiedNode; // já é uma cláusula única ou constante
 
-  // Convert each clause to a normalized set of literals
-  const clauses = n.children.map(simplifyClauseForFNC).filter(Boolean); // drop TRUE clauses
+  // Converte cada cláusula para um conjunto normalizado de literais
+  const clauses = simplifiedNode.children
+    .map(simplifyClauseForFNC)
+    .filter(Boolean); // remove cláusulas TRUE
 
-  // If any clause is FALSE => whole FNC is FALSE
-  if (clauses.some((c) => c.kind === TokenType.FALSE)) return FALSE();
+  // Se qualquer cláusula é FALSE => toda FNC é FALSE
+  if (clauses.some((clause) => clause.kind === TokenType.FALSE)) return FALSE();
 
-  // Safety check: ensure all clauses have sets
-  const validClauses = clauses.filter((c) => c.kind === "CLAUSE" && c.set);
+  // Filtra apenas cláusulas válidas com conjuntos
+  const validClauses = clauses.filter(
+    (clause) => clause.kind === "CLAUSE" && clause.literalSet
+  );
 
-  // Subsumption: drop any clause that is a superset of another
-  const kept = [];
+  // Subsunção: remove cláusulas que são superconjuntos de outras
+  const keptClauses = [];
   for (let i = 0; i < validClauses.length; i++) {
     let isSubsumed = false;
     for (let j = 0; j < validClauses.length; j++) {
       if (i === j) continue;
 
-      // i ⊆ j means j is redundant (keep i, remove j). We'll handle by only dropping supersets.
-      // Here we only mark i as subsumed if j ⊆ i (i is superset). So swap:
-
-      if (isSubset(validClauses[j].set, validClauses[i].set)) {
-        // j ⊆ i => i is superset => drop i
+      // Se j ⊆ i, então i é superconjunto (remove i)
+      if (isSubset(validClauses[j].literalSet, validClauses[i].literalSet)) {
         isSubsumed = true;
         break;
       }
     }
-    if (!isSubsumed) kept.push(validClauses[i]);
+    if (!isSubsumed) keptClauses.push(validClauses[i]);
   }
 
-  if (kept.length === 0) return TRUE(); // all were TRUE or subsumed away
+  if (keptClauses.length === 0) return TRUE(); // todas foram TRUE ou subsumidas
 
-  // Rebuild AST
-  const rebuilt = kept.map((c) => disjunctionFromSet(c.set));
-  if (rebuilt.length === 1) return rebuilt[0];
-  return AND(rebuilt);
+  // Reconstrói a AST a partir dos conjuntos
+  const rebuiltClauses = keptClauses.map((clause) =>
+    createDisjunctionFromSet(clause.literalSet)
+  );
+  if (rebuiltClauses.length === 1) return rebuiltClauses[0];
+  return AND(rebuiltClauses);
 }
 
-export function simplifyFND(root) {
-  const n = simplify(root);
-  if (n.type !== TokenType.DISJUNCTION) return n; // already a single term or constant
+// Simplificação específica para Forma Normal Disjuntiva (FND)
+export function simplifyFND(rootNode) {
+  const simplifiedNode = simplify(rootNode);
+  if (simplifiedNode.type !== TokenType.DISJUNCTION) return simplifiedNode; // já é um termo único ou constante
 
-  // Convert each term to normalized set of literals
-  const terms = n.children.map(simplifyTermForFND).filter(Boolean); // drop FALSE terms
+  // Converte cada termo para um conjunto normalizado de literais
+  const terms = simplifiedNode.children.map(simplifyTermForFND).filter(Boolean); // remove termos FALSE
 
-  // Safety check: ensure all terms have sets
-  const validTerms = terms.filter((c) => c.kind === "TERM" && c.set);
+  // Filtra apenas termos válidos com conjuntos
+  const validTerms = terms.filter(
+    (term) => term.kind === "TERM" && term.literalSet
+  );
 
-  // If any term is TRUE => whole FND is TRUE
-  if (validTerms.some((t) => t.kind === TokenType.TRUE)) return TRUE();
+  // Se qualquer termo é TRUE => toda FND é TRUE
+  if (validTerms.some((term) => term.kind === TokenType.TRUE)) return TRUE();
 
-  // Subsumption: in FND, drop supersets (A ∨ (A ∧ B) = A)
-  const kept = [];
+  // Subsunção: em FND, remove superconjuntos (A ∨ (A ∧ B) = A)
+  const keptTerms = [];
   for (let i = 0; i < validTerms.length; i++) {
     let isSubsumed = false;
     for (let j = 0; j < validTerms.length; j++) {
       if (i === j) continue;
-      if (isSubset(validTerms[j].set, validTerms[i].set)) {
-        // j ⊆ i => i is superset => drop i
+      if (isSubset(validTerms[j].literalSet, validTerms[i].literalSet)) {
+        // j ⊆ i => i é superconjunto => remove i
         isSubsumed = true;
         break;
       }
     }
-    if (!isSubsumed) kept.push(validTerms[i]);
+    if (!isSubsumed) keptTerms.push(validTerms[i]);
   }
 
-  if (kept.length === 0) return FALSE(); // all terms false or subsumed (rare after above)
+  if (keptTerms.length === 0) return FALSE(); // todos os termos FALSE ou subsumidos
 
-  const rebuilt = kept.map((t) => conjunctionFromSet(t.set));
-  if (rebuilt.length === 1) return rebuilt[0];
-  return OR(rebuilt);
+  const rebuiltTerms = keptTerms.map((term) =>
+    createConjunctionFromSet(term.literalSet)
+  );
+  if (rebuiltTerms.length === 1) return rebuiltTerms[0];
+  return OR(rebuiltTerms);
 }
 
+// Simplifica uma cláusula individual para FNC
 function simplifyClauseForFNC(node) {
-  // A clause is a DISJUNCTION of literals (or a single literal).
-  // Handle constants inside: L ∨ TRUE = TRUE, L ∨ FALSE drops FALSE.
+  // Uma cláusula é uma DISJUNÇÃO de literais (ou um literal único)
   if (node.type === TokenType.TRUE) return { kind: TokenType.TRUE };
   if (node.type === TokenType.FALSE) return { kind: TokenType.FALSE };
 
-  let lits = [];
+  let literals = [];
   if (node.type === TokenType.DISJUNCTION && node.children)
-    lits = node.children;
-  else lits = [node];
+    literals = node.children;
+  else literals = [node];
 
-  // Simplify each literal first
-  lits = lits.map(simplify).filter(isLiteral);
+  // Simplifica cada literal e filtra apenas literais válidos
+  literals = literals.map(simplify).filter(isLiteral);
 
-  // If clause contains complementary literals => clause is TRUE
-  for (let i = 0; i < lits.length; i++) {
-    for (let j = i + 1; j < lits.length; j++) {
-      if (areComplementary(lits[i], lits[j])) return { kind: TokenType.TRUE };
+  // Se cláusula contém literais complementares => cláusula é TRUE
+  for (let i = 0; i < literals.length; i++) {
+    for (let j = i + 1; j < literals.length; j++) {
+      if (areComplementary(literals[i], literals[j]))
+        return { kind: TokenType.TRUE };
     }
   }
 
-  // Drop FALSE literals, dedup
-  lits = lits.filter((l) => l.type !== TokenType.FALSE);
+  // Remove literais FALSE e deduplica
+  literals = literals.filter((literal) => literal.type !== TokenType.FALSE);
 
-  // Check if empty after filtering
-  if (lits.length === 0) return { kind: TokenType.FALSE };
+  // Verifica se ficou vazia após filtro
+  if (literals.length === 0) return { kind: TokenType.FALSE };
 
-  const set = new Set(lits.map(literalKey));
+  const literalSet = new Set(literals.map(getLiteralKey));
 
-  return { kind: "CLAUSE", set };
+  return { kind: "CLAUSE", literalSet };
 }
 
+// Simplifica um termo individual para FND
 function simplifyTermForFND(node) {
-  // A term is a CONJUNCTION of literals (or a single literal).
+  // Um termo é uma CONJUNÇÃO de literais (ou um literal único)
   if (node.type === TokenType.TRUE) return { kind: TokenType.TRUE };
   if (node.type === TokenType.FALSE) return { kind: TokenType.FALSE };
 
-  let lits = [];
+  let literals = [];
   if (node.type === TokenType.CONJUNCTION && node.children)
-    lits = node.children;
-  else lits = [node];
+    literals = node.children;
+  else literals = [node];
 
-  lits = lits.map(simplify).filter(isLiteral);
+  literals = literals.map(simplify).filter(isLiteral);
 
-  // If term contains complementary literals => FALSE
-  for (let i = 0; i < lits.length; i++) {
-    for (let j = i + 1; j < lits.length; j++) {
-      if (areComplementary(lits[i], lits[j])) return { kind: TokenType.FALSE };
+  // Se termo contém literais complementares => FALSE
+  for (let i = 0; i < literals.length; i++) {
+    for (let j = i + 1; j < literals.length; j++) {
+      if (areComplementary(literals[i], literals[j]))
+        return { kind: TokenType.FALSE };
     }
   }
 
-  // Drop TRUE literals, dedup
-  lits = lits.filter((l) => l.type !== TokenType.TRUE);
+  // Remove literais TRUE e deduplica
+  literals = literals.filter((literal) => literal.type !== TokenType.TRUE);
 
-  // Check if empty after filtering
-  if (lits.length === 0) return { kind: TokenType.FALSE };
+  // Verifica se ficou vazia após filtro
+  if (literals.length === 0) return { kind: TokenType.FALSE };
 
-  const set = new Set(lits.map(literalKey));
+  const literalSet = new Set(literals.map(getLiteralKey));
 
-  return { kind: "TERM", set };
+  return { kind: "TERM", literalSet };
 }
 
+// Verifica se setA é subconjunto de setB
 function isSubset(setA, setB) {
-  // is A ⊆ B ? (sets are JS Set of literal keys)
-
-  for (const a of setA) if (!setB.has(a)) return false;
+  for (const element of setA) if (!setB.has(element)) return false;
   return true;
 }
 
-function disjunctionFromSet(set) {
-  const nodes = [...set].map(fromLiteralKey);
+// Cria disjunção a partir de um conjunto de literais
+function createDisjunctionFromSet(literalSet) {
+  const nodes = [...literalSet].map(createNodeFromLiteralKey);
   return nodes.length === 1 ? nodes[0] : OR(nodes);
 }
 
-function conjunctionFromSet(set) {
-  const nodes = [...set].map(fromLiteralKey);
+// Cria conjunção a partir de um conjunto de literais
+function createConjunctionFromSet(literalSet) {
+  const nodes = [...literalSet].map(createNodeFromLiteralKey);
   return nodes.length === 1 ? nodes[0] : AND(nodes);
 }
 
-function fromLiteralKey(k) {
-  if (k.startsWith("!")) return NEG(JSON.parse(k.slice(1)));
-  return JSON.parse(k);
+// Reconstrói nó a partir da chave do literal
+function createNodeFromLiteralKey(key) {
+  if (key.startsWith("!")) return NEG(JSON.parse(key.slice(1)));
+  return JSON.parse(key);
 }

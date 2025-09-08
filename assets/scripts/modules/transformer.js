@@ -24,123 +24,119 @@ export function FALSE() {
   return createNode(TokenType.FALSE);
 }
 
-// Transformação principal
-export function transformarFormula(ast) {
-  const passos = [];
+// Transformação principal - executa todas as etapas de transformação lógica
+export function transformFormula(ast) {
+  const transformationSteps = [];
 
   // Passo 1: Eliminar Implicações
-  const semImplicacoes = eliminarImplicacoes(ast);
-  passos.push({
-    nome: "Eliminar Implicações e Bicondicionais",
-    resultado: prettify(semImplicacoes),
+  const withoutImplications = eliminateImplications(ast);
+  transformationSteps.push({
+    name: "Eliminar Implicações e Bicondicionais",
+    result: prettify(withoutImplications),
   });
 
   // Passo 2: Mover Negações para Dentro (Forma Normal Negativa)
-  const fnn = moverNegacoesParaDentro(semImplicacoes);
-  passos.push({
-    nome: "Forma Normal Negativa",
-    resultado: prettify(fnn),
+  const negativeNormalForm = moveNegationsInward(withoutImplications);
+  transformationSteps.push({
+    name: "Forma Normal Negativa",
+    result: prettify(negativeNormalForm),
   });
 
   // Passo 3: Padronizar Variáveis
-  const padronizado = padronizarVariaveis(fnn);
-  passos.push({
-    nome: "Padronizar Variáveis",
-    resultado: prettify(padronizado),
+  const standardizedVariables = standardizeVariables(negativeNormalForm);
+  transformationSteps.push({
+    name: "Padronizar Variáveis",
+    result: prettify(standardizedVariables),
   });
 
   // Passo 4: Forma Normal Prenex
-  const prenex = formaPrenex(padronizado);
-  passos.push({
-    nome: "Forma Normal Prenex",
-    resultado: prettify(prenex),
+  const prenexForm = convertToPrenexForm(standardizedVariables);
+  transformationSteps.push({
+    name: "Forma Normal Prenex",
+    result: prettify(prenexForm),
   });
 
   // Passo 5: Forma Normal Conjuntiva Prenex
-  const fncPrenex = converterFNC(prenex);
-  passos.push({
-    nome: "Forma Normal Conjuntiva Prenex",
-    resultado: prettify(fncPrenex),
+  const prenexCNF = convertToCNF(prenexForm);
+  transformationSteps.push({
+    name: "Forma Normal Conjuntiva Prenex",
+    result: prettify(prenexCNF),
   });
 
   // Passo 6: Forma Normal Disjuntiva Prenex
-  const fndPrenex = converterFND(prenex);
-  passos.push({
-    nome: "Forma Normal Disjuntiva Prenex",
-    resultado: prettify(fndPrenex),
+  const prenexDNF = convertToDNF(prenexForm);
+  transformationSteps.push({
+    name: "Forma Normal Disjuntiva Prenex",
+    result: prettify(prenexDNF),
   });
 
   // Passo 7: Skolemização
-  const skolem = skolemizacao(prenex);
-  passos.push({
-    nome: "Skolemização",
-    resultado: prettify(skolem),
+  const skolemizedForm = skolemization(prenexForm);
+  transformationSteps.push({
+    name: "Skolemização",
+    result: prettify(skolemizedForm),
   });
 
   // Passo 8: Eliminar Quantificadores Universais
-  const semQuantificadores = eliminarQuantificadoresUniversais(skolem);
-  passos.push({
-    nome: "Eliminar Quantificadores Universais",
-    resultado: prettify(semQuantificadores),
+  const withoutUniversalQuantifiers =
+    eliminateUniversalQuantifiers(skolemizedForm);
+  transformationSteps.push({
+    name: "Eliminar Quantificadores Universais",
+    result: prettify(withoutUniversalQuantifiers),
   });
 
   // Passo 9: Obter Forma Clausal
-  const formaClausal = obterFormaClausal(converterFNC(semQuantificadores));
-  passos.push({
-    nome: "Forma Clausal",
-    resultado: formaClausal,
+  const clausalForm = getClausalForm(convertToCNF(withoutUniversalQuantifiers));
+  transformationSteps.push({
+    name: "Forma Clausal",
+    result: clausalForm,
   });
 
-  // // Passo 10: Identificar Cláusulas de Horn
-  // const hornClauses = identificarClausulasDeHorn(formaClausal);
-  // passos.push({
-  //   nome: "Cláusulas de Horn",
-  //   resultado: hornClauses,
-  // });
-
-  return passos;
+  return transformationSteps;
 }
 
 // Implementação das funções de transformação
-function eliminarImplicacoes(ast) {
+
+// Elimina implicações e bicondicionais usando equivalências lógicas
+function eliminateImplications(ast) {
   if (!ast) return ast;
 
   switch (ast.type) {
     case TokenType.IMPLIES:
-      // A → B ≡ ¬A \\lor B
+      // A → B ≡ ¬A ∨ B
       return OR([
-        NEG(eliminarImplicacoes(ast.left)),
-        eliminarImplicacoes(ast.right),
+        NEG(eliminateImplications(ast.left)),
+        eliminateImplications(ast.right),
       ]);
 
     case TokenType.BICONDITIONAL:
       // A ↔ B ≡ (A → B) ∧ (B → A)
       return AND([
         OR([
-          NEG(eliminarImplicacoes(ast.left)),
-          eliminarImplicacoes(ast.right),
+          NEG(eliminateImplications(ast.left)),
+          eliminateImplications(ast.right),
         ]),
         OR([
-          NEG(eliminarImplicacoes(ast.right)),
-          eliminarImplicacoes(ast.left),
+          NEG(eliminateImplications(ast.right)),
+          eliminateImplications(ast.left),
         ]),
       ]);
 
     case TokenType.NEGATION:
-      return NEG(eliminarImplicacoes(ast.child));
+      return NEG(eliminateImplications(ast.child));
 
     case TokenType.CONJUNCTION:
     case TokenType.DISJUNCTION:
       const children = ast.children
-        ? ast.children.map(eliminarImplicacoes)
-        : [eliminarImplicacoes(ast.left), eliminarImplicacoes(ast.right)];
+        ? ast.children.map(eliminateImplications)
+        : [eliminateImplications(ast.left), eliminateImplications(ast.right)];
       return { ...ast, children };
 
     case TokenType.FORALL:
     case TokenType.EXISTS:
       return {
         ...ast,
-        child: eliminarImplicacoes(ast.child),
+        child: eliminateImplications(ast.child),
       };
 
     default:
@@ -148,73 +144,72 @@ function eliminarImplicacoes(ast) {
   }
 }
 
-function moverNegacoesParaDentro(ast) {
+// Aplica leis de De Morgan para mover negações para dentro
+function moveNegationsInward(ast) {
   if (!ast) return ast;
 
   switch (ast.type) {
     case TokenType.NEGATION:
-      const child = ast.child;
+      const childNode = ast.child;
 
       // Dupla negação
-      if (child.type === TokenType.NEGATION) {
-        return moverNegacoesParaDentro(child.child);
+      if (childNode.type === TokenType.NEGATION) {
+        return moveNegationsInward(childNode.child);
       }
 
-      // Leis de De Morgan
-      if (child.type === TokenType.CONJUNCTION) {
-        const children = child.children
-          ? child.children.map((c) => moverNegacoesParaDentro(NEG(c)))
+      // Leis de De Morgan para conjunções
+      if (childNode.type === TokenType.CONJUNCTION) {
+        const children = childNode.children
+          ? childNode.children.map((child) => moveNegationsInward(NEG(child)))
           : [
-              moverNegacoesParaDentro(NEG(child.left)),
-              moverNegacoesParaDentro(NEG(child.right)),
+              moveNegationsInward(NEG(childNode.left)),
+              moveNegationsInward(NEG(childNode.right)),
             ];
         return OR(children);
       }
 
-      if (child.type === TokenType.DISJUNCTION) {
-        const children = child.children
-          ? child.children.map((c) => moverNegacoesParaDentro(NEG(c)))
+      // Leis de De Morgan para disjunções
+      if (childNode.type === TokenType.DISJUNCTION) {
+        const children = childNode.children
+          ? childNode.children.map((child) => moveNegationsInward(NEG(child)))
           : [
-              moverNegacoesParaDentro(NEG(child.left)),
-              moverNegacoesParaDentro(NEG(child.right)),
+              moveNegationsInward(NEG(childNode.left)),
+              moveNegationsInward(NEG(childNode.right)),
             ];
         return AND(children);
       }
 
-      // Negação de quantificadores - FIXED to handle recursive negation
-      if (child.type === TokenType.FORALL) {
+      // Negação de quantificadores
+      if (childNode.type === TokenType.FORALL) {
         return {
           type: TokenType.EXISTS,
-          variable: child.variable,
-          child: moverNegacoesParaDentro(NEG(child.child)),
+          variable: childNode.variable,
+          child: moveNegationsInward(NEG(childNode.child)),
         };
       }
-      if (child.type === TokenType.EXISTS) {
+      if (childNode.type === TokenType.EXISTS) {
         return {
           type: TokenType.FORALL,
-          variable: child.variable,
-          child: moverNegacoesParaDentro(NEG(child.child)),
+          variable: childNode.variable,
+          child: moveNegationsInward(NEG(childNode.child)),
         };
       }
 
-      // Base case: atomic formula
-      return NEG(moverNegacoesParaDentro(child));
+      // Caso base: fórmula atômica
+      return NEG(moveNegationsInward(childNode));
 
     case TokenType.CONJUNCTION:
     case TokenType.DISJUNCTION:
       const children = ast.children
-        ? ast.children.map(moverNegacoesParaDentro)
-        : [
-            moverNegacoesParaDentro(ast.left),
-            moverNegacoesParaDentro(ast.right),
-          ];
+        ? ast.children.map(moveNegationsInward)
+        : [moveNegationsInward(ast.left), moveNegationsInward(ast.right)];
       return { ...ast, children };
 
     case TokenType.FORALL:
     case TokenType.EXISTS:
       return {
         ...ast,
-        child: moverNegacoesParaDentro(ast.child),
+        child: moveNegationsInward(ast.child),
       };
 
     default:
@@ -222,66 +217,68 @@ function moverNegacoesParaDentro(ast) {
   }
 }
 
+// Sequência padrão de nomes de variáveis para padronização
 const variableSequence = ["x", "y", "z", "u", "v", "w"];
 
-function padronizarVariaveis(
+// Padroniza nomes de variáveis para evitar conflitos
+function standardizeVariables(
   ast,
-  mapaVariaveis = new Map(),
-  contador = { value: 0 }
+  variableMap = new Map(),
+  counter = { value: 0 }
 ) {
   if (!ast) return ast;
 
   switch (ast.type) {
     case TokenType.VAR:
-      if (mapaVariaveis.has(ast.name)) {
-        return { ...ast, name: mapaVariaveis.get(ast.name) };
+      if (variableMap.has(ast.name)) {
+        return { ...ast, name: variableMap.get(ast.name) };
       }
       return ast;
 
     case TokenType.PREDICATE:
-      const novosArgs = ast.args.map((arg) => {
-        if (mapaVariaveis.has(arg)) {
-          return mapaVariaveis.get(arg);
+      const newArguments = ast.args.map((argument) => {
+        if (variableMap.has(argument)) {
+          return variableMap.get(argument);
         }
-        return arg;
+        return argument;
       });
-      return { ...ast, args: novosArgs };
+      return { ...ast, args: newArguments };
 
     case TokenType.FORALL:
     case TokenType.EXISTS:
-      // Create a NEW map for this scope to avoid polluting parent scope
-      const novoMapa = new Map(mapaVariaveis);
-      const variavelOriginal = ast.variable;
+      // Cria novo mapa para este escopo para não poluir escopo pai
+      const newVariableMap = new Map(variableMap);
+      const originalVariable = ast.variable;
 
-      // Always create a new variable name for this quantifier, even if it exists in parent scope
-      let novaVariavel;
-      if (contador.value < variableSequence.length) {
-        novaVariavel = variableSequence[contador.value];
+      // Sempre cria novo nome de variável para este quantificador
+      let newVariable;
+      if (counter.value < variableSequence.length) {
+        newVariable = variableSequence[counter.value];
       } else {
-        novaVariavel = `x_${contador.value - variableSequence.length}`;
+        newVariable = `x_${counter.value - variableSequence.length}`;
       }
-      contador.value++;
+      counter.value++;
 
-      novoMapa.set(variavelOriginal, novaVariavel);
+      newVariableMap.set(originalVariable, newVariable);
 
       return {
         ...ast,
-        variable: novaVariavel,
-        child: padronizarVariaveis(ast.child, novoMapa, contador),
+        variable: newVariable,
+        child: standardizeVariables(ast.child, newVariableMap, counter),
       };
 
     case TokenType.NEGATION:
-      return NEG(padronizarVariaveis(ast.child, mapaVariaveis, contador));
+      return NEG(standardizeVariables(ast.child, variableMap, counter));
 
     case TokenType.CONJUNCTION:
     case TokenType.DISJUNCTION:
       const children = ast.children
         ? ast.children.map((child) =>
-            padronizarVariaveis(child, mapaVariaveis, contador)
+            standardizeVariables(child, variableMap, counter)
           )
         : [
-            padronizarVariaveis(ast.left, mapaVariaveis, contador),
-            padronizarVariaveis(ast.right, mapaVariaveis, contador),
+            standardizeVariables(ast.left, variableMap, counter),
+            standardizeVariables(ast.right, variableMap, counter),
           ];
       return { ...ast, children };
 
@@ -290,26 +287,27 @@ function padronizarVariaveis(
   }
 }
 
-function formaPrenex(ast) {
+// Converte para Forma Normal Prenex (todos quantificadores no início)
+function convertToPrenexForm(ast) {
   if (!ast) return ast;
 
-  // Função para extrair quantificadores recursivamente de qualquer parte da fórmula
-  function extrairQuantificadores(node) {
+  // Função para extrair quantificadores recursivamente
+  function extractQuantifiers(node) {
     if (node.type === TokenType.FORALL || node.type === TokenType.EXISTS) {
-      const { quantificadores: quantChild, matriz: matrizChild } =
-        extrairQuantificadores(node.child);
+      const { quantifiers: childQuantifiers, matrix: childMatrix } =
+        extractQuantifiers(node.child);
       return {
-        quantificadores: [
+        quantifiers: [
           { type: node.type, variable: node.variable },
-          ...quantChild,
+          ...childQuantifiers,
         ],
-        matriz: matrizChild,
+        matrix: childMatrix,
       };
     }
 
     if (node.type === TokenType.NEGATION) {
-      const { quantificadores, matriz } = extrairQuantificadores(node.child);
-      return { quantificadores, matriz: NEG(matriz) };
+      const { quantifiers, matrix } = extractQuantifiers(node.child);
+      return { quantifiers, matrix: NEG(matrix) };
     }
 
     if (
@@ -317,83 +315,86 @@ function formaPrenex(ast) {
       node.type === TokenType.DISJUNCTION
     ) {
       const children = node.children || [node.left, node.right];
-      let allQuantificadores = [];
+      let allQuantifiers = [];
       let newChildren = [];
 
       for (const child of children) {
-        const { quantificadores: childQuant, matriz: childMatriz } =
-          extrairQuantificadores(child);
-        allQuantificadores = [...allQuantificadores, ...childQuant];
-        newChildren.push(childMatriz);
+        const { quantifiers: childQuantifiers, matrix: childMatrix } =
+          extractQuantifiers(child);
+        allQuantifiers = [...allQuantifiers, ...childQuantifiers];
+        newChildren.push(childMatrix);
       }
 
       return {
-        quantificadores: allQuantificadores,
-        matriz: { ...node, children: newChildren },
+        quantifiers: allQuantifiers,
+        matrix: { ...node, children: newChildren },
       };
     }
 
-    // Para outros tipos (VAR, PREDICATE, TRUE, FALSE), não há quantificadores
-    return { quantificadores: [], matriz: node };
+    // Para outros tipos, não há quantificadores
+    return { quantifiers: [], matrix: node };
   }
 
   // Aplica quantificadores à matriz
-  function aplicarQuantificadores(matriz, quantificadores) {
-    if (quantificadores.length === 0) return matriz;
+  function applyQuantifiers(matrix, quantifiers) {
+    if (quantifiers.length === 0) return matrix;
 
-    const [primeiro, ...resto] = quantificadores;
-    const child = aplicarQuantificadores(matriz, resto);
+    const [firstQuantifier, ...remainingQuantifiers] = quantifiers;
+    const childNode = applyQuantifiers(matrix, remainingQuantifiers);
 
     return {
-      type: primeiro.type,
-      variable: primeiro.variable,
-      child,
+      type: firstQuantifier.type,
+      variable: firstQuantifier.variable,
+      child: childNode,
     };
   }
 
-  const { matriz, quantificadores } = extrairQuantificadores(ast);
+  const { matrix, quantifiers } = extractQuantifiers(ast);
 
-  // Manter a ordem dos quantificadores, pois mudar altera a semântica completamente!
-  return aplicarQuantificadores(matriz, quantificadores);
+  // Mantém a ordem dos quantificadores (importante para semântica)
+  return applyQuantifiers(matrix, quantifiers);
 }
 
-function skolemizacao(ast) {
+// Skolemização: remove quantificadores existenciais usando funções de Skolem
+function skolemization(ast) {
   if (!ast) return ast;
 
   let skolemCounter = { value: 0 };
 
-  function skolemizarRecursivamente(
+  function skolemizeRecursively(
     node,
-    quantificadoresUniversais = [],
-    funcoesSkolem = new Map()
+    universalQuantifiers = [],
+    skolemFunctions = new Map()
   ) {
     switch (node.type) {
       case TokenType.EXISTS:
         // Cria função de Skolem para variável existencial
-        const nomeFuncao =
-          quantificadoresUniversais.length > 0
+        const functionName =
+          universalQuantifiers.length > 0
             ? `f_${skolemCounter.value++}`
             : `c_${skolemCounter.value++ + 1}`;
-        const argsSkolem = quantificadoresUniversais.map((q) => q.variable);
+        const skolemArguments = universalQuantifiers.map(
+          (quantifier) => quantifier.variable
+        );
 
         // Substitui variável existencial por função de Skolem
-        function substituirVariavel(subNode) {
+        function substituteVariable(subNode) {
           if (!subNode) return subNode;
 
           if (
             subNode.type === TokenType.VAR &&
             subNode.name === node.variable
           ) {
-            if (quantificadoresUniversais.length === 0) {
+            if (universalQuantifiers.length === 0) {
               return {
                 type: TokenType.VAR,
-                name: nomeFuncao,
+                name: functionName,
               };
             } else {
               return {
                 type: TokenType.PREDICATE,
-                name: nomeFuncao,
-                args: argsSkolem,
+                name: functionName,
+                args: skolemArguments,
               };
             }
           }
@@ -401,18 +402,18 @@ function skolemizacao(ast) {
           if (subNode.type === TokenType.PREDICATE) {
             return {
               ...subNode,
-              args: subNode.args.map((arg) =>
-                arg === node.variable
-                  ? quantificadoresUniversais.length > 0
-                    ? `${nomeFuncao}(${argsSkolem.join(",")})`
-                    : nomeFuncao
-                  : arg
+              args: subNode.args.map((argument) =>
+                argument === node.variable
+                  ? universalQuantifiers.length > 0
+                    ? `${functionName}(${skolemArguments.join(",")})`
+                    : functionName
+                  : argument
               ),
             };
           }
 
           if (subNode.type === TokenType.NEGATION) {
-            return NEG(substituirVariavel(subNode.child));
+            return NEG(substituteVariable(subNode.child));
           }
 
           if (
@@ -420,10 +421,10 @@ function skolemizacao(ast) {
             subNode.type === TokenType.DISJUNCTION
           ) {
             const children = subNode.children
-              ? subNode.children.map(substituirVariavel)
+              ? subNode.children.map(substituteVariable)
               : [
-                  substituirVariavel(subNode.left),
-                  substituirVariavel(subNode.right),
+                  substituteVariable(subNode.left),
+                  substituteVariable(subNode.right),
                 ];
             return { ...subNode, children };
           }
@@ -434,35 +435,35 @@ function skolemizacao(ast) {
           ) {
             return {
               ...subNode,
-              child: substituirVariavel(subNode.child),
+              child: substituteVariable(subNode.child),
             };
           }
 
           return subNode;
         }
 
-        return skolemizarRecursivamente(
-          substituirVariavel(node.child),
-          quantificadoresUniversais,
-          funcoesSkolem
+        return skolemizeRecursively(
+          substituteVariable(node.child),
+          universalQuantifiers,
+          skolemFunctions
         );
 
       case TokenType.FORALL:
         return {
           ...node,
-          child: skolemizarRecursivamente(
+          child: skolemizeRecursively(
             node.child,
-            [...quantificadoresUniversais, node],
-            funcoesSkolem
+            [...universalQuantifiers, node],
+            skolemFunctions
           ),
         };
 
       case TokenType.NEGATION:
         return NEG(
-          skolemizarRecursivamente(
+          skolemizeRecursively(
             node.child,
-            quantificadoresUniversais,
-            funcoesSkolem
+            universalQuantifiers,
+            skolemFunctions
           )
         );
 
@@ -470,22 +471,18 @@ function skolemizacao(ast) {
       case TokenType.DISJUNCTION:
         const children = node.children
           ? node.children.map((child) =>
-              skolemizarRecursivamente(
-                child,
-                quantificadoresUniversais,
-                funcoesSkolem
-              )
+              skolemizeRecursively(child, universalQuantifiers, skolemFunctions)
             )
           : [
-              skolemizarRecursivamente(
+              skolemizeRecursively(
                 node.left,
-                quantificadoresUniversais,
-                funcoesSkolem
+                universalQuantifiers,
+                skolemFunctions
               ),
-              skolemizarRecursivamente(
+              skolemizeRecursively(
                 node.right,
-                quantificadoresUniversais,
-                funcoesSkolem
+                universalQuantifiers,
+                skolemFunctions
               ),
             ];
         return { ...node, children };
@@ -495,26 +492,27 @@ function skolemizacao(ast) {
     }
   }
 
-  return skolemizarRecursivamente(ast);
+  return skolemizeRecursively(ast);
 }
 
-function eliminarQuantificadoresUniversais(ast) {
+// Elimina quantificadores universais (após skolemização)
+function eliminateUniversalQuantifiers(ast) {
   if (!ast) return ast;
 
   switch (ast.type) {
     case TokenType.FORALL:
-      return eliminarQuantificadoresUniversais(ast.child);
+      return eliminateUniversalQuantifiers(ast.child);
 
     case TokenType.NEGATION:
-      return NEG(eliminarQuantificadoresUniversais(ast.child));
+      return NEG(eliminateUniversalQuantifiers(ast.child));
 
     case TokenType.CONJUNCTION:
     case TokenType.DISJUNCTION:
       const children = ast.children
-        ? ast.children.map(eliminarQuantificadoresUniversais)
+        ? ast.children.map(eliminateUniversalQuantifiers)
         : [
-            eliminarQuantificadoresUniversais(ast.left),
-            eliminarQuantificadoresUniversais(ast.right),
+            eliminateUniversalQuantifiers(ast.left),
+            eliminateUniversalQuantifiers(ast.right),
           ];
       return { ...ast, children };
 
@@ -523,36 +521,39 @@ function eliminarQuantificadoresUniversais(ast) {
   }
 }
 
-export function normalizarChildren(children) {
-  const flat = [];
-  for (const c of children) {
-    if (!c) continue;
-    if (Array.isArray(c)) flat.push(...normalizarChildren(c));
+// Normaliza children para estrutura plana
+export function normalizeChildren(children) {
+  const flattenedChildren = [];
+  for (const child of children) {
+    if (!child) continue;
+    if (Array.isArray(child))
+      flattenedChildren.push(...normalizeChildren(child));
     else if (
-      c.type === TokenType.CONJUNCTION ||
-      c.type === TokenType.DISJUNCTION
+      child.type === TokenType.CONJUNCTION ||
+      child.type === TokenType.DISJUNCTION
     ) {
-      // Flatten nested same-type operations
-      if (c.children) {
-        flat.push(...normalizarChildren(c.children));
-      } else if (c.left && c.right) {
-        flat.push(...normalizarChildren([c.left, c.right]));
+      // Achata operações aninhadas do mesmo tipo
+      if (child.children) {
+        flattenedChildren.push(...normalizeChildren(child.children));
+      } else if (child.left && child.right) {
+        flattenedChildren.push(...normalizeChildren([child.left, child.right]));
       } else {
-        flat.push(c);
+        flattenedChildren.push(child);
       }
-    } else flat.push(c);
+    } else flattenedChildren.push(child);
   }
-  return flat;
+  return flattenedChildren;
 }
 
-function distribuirFNC(node) {
+// Distribui disjunções sobre conjunções para FNC
+function distributeCNF(node) {
   if (!node) return null;
 
-  // Handle base cases and quantifiers first
+  // Manipula casos base e quantificadores primeiro
   if ([TokenType.FORALL, TokenType.EXISTS].includes(node.type)) {
     return createNode(node.type, {
       variable: node.variable,
-      child: distribuirFNC(node.child),
+      child: distributeCNF(node.child),
     });
   }
 
@@ -566,11 +567,11 @@ function distribuirFNC(node) {
     return node;
   }
 
-  // Recursively distribute children
-  const children = extractAllChildren(node).map(distribuirFNC);
+  // Distribui children recursivamente
+  const children = extractAllChildren(node).map(distributeCNF);
 
   if (node.type === TokenType.DISJUNCTION) {
-    // Look for conjunctions to distribute over
+    // Procura por conjunções para distribuir
     const conjunctions = [];
     const nonConjunctions = [];
 
@@ -586,15 +587,16 @@ function distribuirFNC(node) {
       return OR(children);
     }
 
-    // Distribute: (A ∧ B) ∨ C → (A ∨ C) ∧ (B ∨ C)
+    // Distribui: (A ∧ B) ∨ C → (A ∨ C) ∧ (B ∨ C)
     const firstConjunction = conjunctions[0];
-    const remaining = [...nonConjunctions, ...conjunctions.slice(1)];
+    const remainingChildren = [...nonConjunctions, ...conjunctions.slice(1)];
 
-    const distributed = firstConjunction.children.map((conjChild) =>
-      distribuirFNC(OR([conjChild, ...remaining]))
+    const distributedChildren = firstConjunction.children.map(
+      (conjunctionChild) =>
+        distributeCNF(OR([conjunctionChild, ...remainingChildren]))
     );
 
-    return AND(distributed);
+    return AND(distributedChildren);
   }
 
   if (node.type === TokenType.CONJUNCTION) {
@@ -604,14 +606,15 @@ function distribuirFNC(node) {
   return node;
 }
 
-function distribuirFND(node) {
+// Distribui conjunções sobre disjunções para FND
+function distributeDNF(node) {
   if (!node) return null;
 
-  // Handle base cases and quantifiers first
+  // Manipula casos base e quantificadores primeiro
   if ([TokenType.FORALL, TokenType.EXISTS].includes(node.type)) {
     return createNode(node.type, {
       variable: node.variable,
-      child: distribuirFND(node.child),
+      child: distributeDNF(node.child),
     });
   }
 
@@ -625,11 +628,11 @@ function distribuirFND(node) {
     return node;
   }
 
-  // Recursively distribute children
-  const children = extractAllChildren(node).map(distribuirFND);
+  // Distribui children recursivamente
+  const children = extractAllChildren(node).map(distributeDNF);
 
   if (node.type === TokenType.CONJUNCTION) {
-    // Look for disjunctions to distribute over
+    // Procura por disjunções para distribuir
     const disjunctions = [];
     const nonDisjunctions = [];
 
@@ -645,15 +648,16 @@ function distribuirFND(node) {
       return AND(children);
     }
 
-    // Distribute: (A ∨ B) ∧ C → (A ∧ C) ∨ (B ∧ C)
+    // Distribui: (A ∨ B) ∧ C → (A ∧ C) ∨ (B ∧ C)
     const firstDisjunction = disjunctions[0];
-    const remaining = [...nonDisjunctions, ...disjunctions.slice(1)];
+    const remainingChildren = [...nonDisjunctions, ...disjunctions.slice(1)];
 
-    const distributed = firstDisjunction.children.map((disjChild) =>
-      distribuirFND(AND([disjChild, ...remaining]))
+    const distributedChildren = firstDisjunction.children.map(
+      (disjunctionChild) =>
+        distributeDNF(AND([disjunctionChild, ...remainingChildren]))
     );
 
-    return OR(distributed);
+    return OR(distributedChildren);
   }
 
   if (node.type === TokenType.DISJUNCTION) {
@@ -663,23 +667,27 @@ function distribuirFND(node) {
   return node;
 }
 
-function converterFNC(ast) {
-  const distributed = distribuirFNC(ast);
-  return simplifyFNC(distributed);
+// Converte para Forma Normal Conjuntiva (CNF)
+function convertToCNF(ast) {
+  const distributedAST = distributeCNF(ast);
+  return simplifyFNC(distributedAST);
 }
 
-function converterFND(ast) {
-  const distributed = distribuirFND(ast);
-  return simplifyFND(distributed);
+// Converte para Forma Normal Disjuntiva (DNF)
+function convertToDNF(ast) {
+  const distributedAST = distributeDNF(ast);
+  return simplifyFND(distributedAST);
 }
 
+// Extrai todos os children de um nó
 function extractAllChildren(node) {
   if (node.children) return node.children;
   if (node.left && node.right) return [node.left, node.right];
   return [node];
 }
 
-function normalizarArvoreBinariaParaNAria(ast) {
+// Normaliza árvore binária para n-ária
+function normalizeBinaryToNaryTree(ast) {
   if (!ast) return ast;
 
   if (
@@ -688,49 +696,50 @@ function normalizarArvoreBinariaParaNAria(ast) {
   ) {
     const children = [];
 
-    function coletarFilhos(node) {
+    function collectChildren(node) {
       if (node.type === ast.type) {
-        node.children.forEach(coletarFilhos);
+        node.children.forEach(collectChildren);
       } else {
-        children.push(normalizarArvoreBinariaParaNAria(node));
+        children.push(normalizeBinaryToNaryTree(node));
       }
     }
 
-    coletarFilhos(ast);
+    collectChildren(ast);
     return { ...ast, children };
   }
 
   if (ast.type === TokenType.NEGATION) {
-    return NEG(normalizarArvoreBinariaParaNAria(ast.child));
+    return NEG(normalizeBinaryToNaryTree(ast.child));
   }
 
   if (ast.type === TokenType.FORALL || ast.type === TokenType.EXISTS) {
     return {
       ...ast,
-      child: normalizarArvoreBinariaParaNAria(ast.child),
+      child: normalizeBinaryToNaryTree(ast.child),
     };
   }
 
   return ast;
 }
 
-function obterFormaClausal(ast) {
+// Obtém representação em forma clausal
+function getClausalForm(ast) {
   if (!ast) return "";
 
-  const arvoreNormalizada = normalizarArvoreBinariaParaNAria(ast);
+  const normalizedTree = normalizeBinaryToNaryTree(ast);
 
-  if (arvoreNormalizada.type === TokenType.CONJUNCTION) {
-    const clausulas = arvoreNormalizada.children.map(
+  if (normalizedTree.type === TokenType.CONJUNCTION) {
+    const clauses = normalizedTree.children.map(
       (clause, index) => `C_{${index + 1}}: ${prettify(clause)}`
     );
 
-    return clausulas.join("\\\\");
+    return clauses.join("\\\\");
   }
 
-  return `C_{1}: ${prettify(arvoreNormalizada)}`;
+  return `C_{1}: ${prettify(normalizedTree)}`;
 }
 
 // Função principal para executar todas as transformações
-export function executarTransformacoesCompletas(ast) {
-  return transformarFormula(ast);
+export function executeCompleteTransformations(ast) {
+  return transformFormula(ast);
 }

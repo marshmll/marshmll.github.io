@@ -1,8 +1,8 @@
 import { tokenize } from "./modules/lexer.js";
 import { parse } from "./modules/parser.js";
-import { executarTransformacoesCompletas } from "./modules/transformer.js";
+import { executeCompleteTransformations } from "./modules/transformer.js";
 
-// Custom macro definitions for KaTeX
+// Definições de macros customizadas para KaTeX
 const customMacros = {
   "\\neg": "\\mathord{\\sim}",
   "\\land": "\\wedge",
@@ -14,7 +14,7 @@ const customMacros = {
   "\\implies": "\\to",
 };
 
-// Highlighted steps
+// Passos destacados na interface
 const HIGHLIGHTED_STEPS = [
   "Forma Normal Conjuntiva Prenex",
   "Forma Normal Disjuntiva Prenex",
@@ -22,8 +22,8 @@ const HIGHLIGHTED_STEPS = [
   "Cláusula de Horn",
 ];
 
-// Theme management
-function initTheme() {
+// Gerenciamento de tema (claro/escuro)
+function initializeTheme() {
   const savedTheme = localStorage.getItem("theme") || "light";
   document.documentElement.setAttribute("data-theme", savedTheme);
   updateThemeIcon(savedTheme);
@@ -46,63 +46,63 @@ function updateThemeIcon(theme) {
   }
 }
 
-// ================= Render LaTeX Function =================
-function renderLatex(latexText, element) {
+// ================= Função para Renderizar LaTeX =================
+function renderLatex(latexText, targetElement) {
   try {
-    element.innerHTML = ""; // clear previous
+    targetElement.innerHTML = ""; // limpa conteúdo anterior
     if (!latexText.trim()) {
-      element.innerHTML = `<span style="color: var(--text-light);">Sua fórmula aparecerá aqui</span>`;
-      element.classList.remove("has-content");
+      targetElement.innerHTML = `<span style="color: var(--text-light);">Sua fórmula aparecerá aqui</span>`;
+      targetElement.classList.remove("has-content");
       return;
     }
 
-    const container = document.createElement("div");
-    container.className = "katex-container";
+    const containerElement = document.createElement("div");
+    containerElement.className = "katex-container";
 
-    // Use KaTeX to render the LaTeX
-    katex.render(latexText, container, {
+    // Usa KaTeX para renderizar o LaTeX
+    katex.render(latexText, containerElement, {
       displayMode: true,
       throwOnError: false,
       macros: customMacros,
     });
 
-    element.appendChild(container);
-    element.classList.add("has-content");
+    targetElement.appendChild(containerElement);
+    targetElement.classList.add("has-content");
   } catch (error) {
-    element.innerHTML = `<div class="text-center p-4" style="color: var(--accent);"><i class="fas fa-exclamation-circle mr-2"></i>Erro: ${error.message}</div>`;
-    element.classList.remove("has-content");
+    targetElement.innerHTML = `<div class="text-center p-4" style="color: var(--accent);"><i class="fas fa-exclamation-circle mr-2"></i>Erro: ${error.message}</div>`;
+    targetElement.classList.remove("has-content");
   }
 }
 
-// ================= Display Steps =================
-function displaySteps(steps) {
+// ================= Exibir Passos de Transformação =================
+function displayTransformationSteps(steps) {
   const stepsContainer = document.getElementById("steps-content");
 
-  // Clear previous content
+  // Limpa conteúdo anterior
   stepsContainer.innerHTML = "";
 
-  // Create grid for steps
-  const grid = document.createElement("div");
-  grid.className = "steps-grid";
-  stepsContainer.appendChild(grid);
+  // Cria grid para os passos
+  const gridContainer = document.createElement("div");
+  gridContainer.className = "steps-grid";
+  stepsContainer.appendChild(gridContainer);
 
-  // Create cards for each step
+  // Cria cards para cada passo
   steps.forEach((step, index) => {
-    const isHighlighted = HIGHLIGHTED_STEPS.includes(step.nome);
+    const isHighlighted = HIGHLIGHTED_STEPS.includes(step.name);
 
     const stepCard = document.createElement("div");
     stepCard.className = `step-card ${isHighlighted ? "highlighted" : ""}`;
 
-    // Set animation delay for staggered effect
+    // Define delay de animação para efeito escalonado
     stepCard.style.animationDelay = `${index * 0.1}s`;
 
     stepCard.innerHTML = `
       <div class="flex items-center mb-2">
         <span class="step-number">${index + 1}</span>
-        <h3 class="text-md font-semibold">${step.nome}</h3>
+        <h3 class="text-md font-semibold">${step.name}</h3>
       </div>
       <div class="step-content">
-        <button class="copy-btn" data-formula="${step.resultado.replace(
+        <button class="copy-btn" data-formula="${step.result.replace(
           /"/g,
           "&quot;"
         )}">
@@ -112,62 +112,62 @@ function displaySteps(steps) {
       </div>
     `;
 
-    grid.appendChild(stepCard);
+    gridContainer.appendChild(stepCard);
 
-    // Render the LaTeX for this step with a slight delay
+    // Renderiza o LaTeX para este passo com um pequeno delay
     setTimeout(() => {
-      renderLatex(step.resultado, document.getElementById(`step-${index}`));
+      renderLatex(step.result, document.getElementById(`step-${index}`));
     }, 100 + index * 100);
   });
 
-  // Add copy event listeners after a delay to ensure elements are rendered
+  // Adiciona event listeners de cópia após um delay para garantir que elementos estão renderizados
   setTimeout(() => {
-    document.querySelectorAll(".copy-btn").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const formula = btn.getAttribute("data-formula");
+    document.querySelectorAll(".copy-btn").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const formula = button.getAttribute("data-formula");
         copyToClipboard(formula);
       });
     });
   }, 500);
 }
 
-// ================= Copy to Clipboard =================
+// ================= Copiar para Área de Transferência =================
 function copyToClipboard(text) {
   navigator.clipboard
     .writeText(text)
     .then(() => {
-      // Show toast notification
-      const toast = document.getElementById("toast");
-      toast.classList.add("show");
+      // Mostra notificação toast
+      const toastElement = document.getElementById("toast");
+      toastElement.classList.add("show");
       setTimeout(() => {
-        toast.classList.remove("show");
+        toastElement.classList.remove("show");
       }, 2000);
     })
-    .catch((err) => {
-      console.error("Falha ao copiar texto: ", err);
+    .catch((error) => {
+      console.error("Falha ao copiar texto: ", error);
     });
 }
 
 // ================= Event Listeners =================
 const latexInput = document.getElementById("latex-input");
 const latexOutput = document.getElementById("latex-output");
-const calculateBtn = document.getElementById("calculate-btn");
+const calculateButton = document.getElementById("calculate-btn");
 const exampleChips = document.querySelectorAll(".example-chip");
-const themeToggle = document.getElementById("theme-toggle");
+const themeToggleButton = document.getElementById("theme-toggle");
 
-// Initialize theme
-initTheme();
+// Inicializa tema
+initializeTheme();
 
-// Theme toggle
-themeToggle.addEventListener("click", toggleTheme);
+// Toggle de tema
+themeToggleButton.addEventListener("click", toggleTheme);
 
-// Live LaTeX preview
+// Preview ao vivo de LaTeX
 latexInput.addEventListener("input", () => {
   renderLatex(latexInput.value, latexOutput);
 });
 
-// Example chips
+// Chips de exemplo
 exampleChips.forEach((chip) => {
   chip.addEventListener("click", () => {
     latexInput.value = chip.dataset.formula;
@@ -175,12 +175,12 @@ exampleChips.forEach((chip) => {
   });
 });
 
-// Calculate button
-calculateBtn.addEventListener("click", () => {
+// Botão de calcular
+calculateButton.addEventListener("click", () => {
   const formula = latexInput.value.trim();
   if (!formula) return;
 
-  // Show loading state
+  // Mostra estado de carregamento
   const stepsContainer = document.getElementById("steps-content");
   stepsContainer.innerHTML = `
     <div class="text-center p-8" style="color: var(--text-light);">
@@ -189,13 +189,14 @@ calculateBtn.addEventListener("click", () => {
     </div>`;
 
   try {
-    const consumer = tokenize(formula);
-    const ast = parse(consumer);
-    const steps = executarTransformacoesCompletas(ast);
+    const tokenConsumer = tokenize(formula);
+    const abstractSyntaxTree = parse(tokenConsumer);
+    const transformationSteps =
+      executeCompleteTransformations(abstractSyntaxTree);
 
-    console.log(steps);
+    console.log(transformationSteps);
 
-    displaySteps(steps);
+    displayTransformationSteps(transformationSteps);
   } catch (error) {
     stepsContainer.innerHTML = `
       <div class="text-center p-4" style="color: var(--accent);">
@@ -205,7 +206,7 @@ calculateBtn.addEventListener("click", () => {
   }
 });
 
-// Initial render
+// Renderização inicial
 document.addEventListener("DOMContentLoaded", () => {
   renderLatex(latexInput.value, latexOutput);
 });

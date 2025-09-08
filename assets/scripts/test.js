@@ -1,25 +1,25 @@
 import { tokenize, TokenType } from "./modules/lexer.js";
 import { parse } from "./modules/parser.js";
-import { executarTransformacoesCompletas } from "./modules/transformer.js";
+import { executeCompleteTransformations } from "./modules/transformer.js";
 import { prettify } from "./modules/printer.js";
 
-// Enhanced equivalence checker that handles commutative operations
-function areEquivalent(expr1, expr2) {
-  // First try simple string comparison
-  const clean1 = prettify(expr1).replace(/\s+/g, "");
-  const clean2 = prettify(expr2).replace(/\s+/g, "");
+// Verificador de equivalência aprimorado que trata operações comutativas
+function areEquivalent(expression1, expression2) {
+  // Primeiro tenta comparação simples de strings
+  const cleanedExpression1 = prettify(expression1).replace(/\s+/g, "");
+  const cleanedExpression2 = prettify(expression2).replace(/\s+/g, "");
 
-  if (clean1 === clean2) return true;
+  if (cleanedExpression1 === cleanedExpression2) return true;
 
-  // If strings don't match, try structural comparison with commutativity
-  return areStructurallyEquivalent(expr1, expr2);
+  // Se strings não coincidem, tenta comparação estrutural com comutatividade
+  return areStructurallyEquivalent(expression1, expression2);
 }
 
 function areStructurallyEquivalent(node1, node2) {
-  // Handle null/undefined cases
+  // Manipula casos null/undefined
   if (!node1 || !node2) return node1 === node2;
 
-  // Different types are not equivalent
+  // Tipos diferentes não são equivalentes
   if (node1.type !== node2.type) return false;
 
   switch (node1.type) {
@@ -31,29 +31,31 @@ function areStructurallyEquivalent(node1, node2) {
       return node1.name === node2.name;
 
     case TokenType.PREDICATE:
-      return node1.name === node2.name && arraysEqual(node1.args, node2.args);
+      return (
+        node1.name === node2.name && areArraysEqual(node1.args, node2.args)
+      );
 
     case TokenType.NEGATION:
       return areStructurallyEquivalent(node1.child, node2.child);
 
     case TokenType.CONJUNCTION:
     case TokenType.DISJUNCTION:
-      // For commutative operations, check if children sets are equivalent
-      const children1 = getChildren(node1);
-      const children2 = getChildren(node2);
+      // Para operações comutativas, verifica se os conjuntos de children são equivalentes
+      const children1 = getAllChildren(node1);
+      const children2 = getAllChildren(node2);
 
       if (children1.length !== children2.length) return false;
 
-      // Check if each child in set1 has an equivalent in set2
-      const matched = new Set();
+      // Verifica se cada child no conjunto1 tem um equivalente no conjunto2
+      const matchedIndices = new Set();
       for (const child1 of children1) {
         let foundMatch = false;
-        for (let j = 0; j < children2.length; j++) {
+        for (let index = 0; index < children2.length; index++) {
           if (
-            !matched.has(j) &&
-            areStructurallyEquivalent(child1, children2[j])
+            !matchedIndices.has(index) &&
+            areStructurallyEquivalent(child1, children2[index])
           ) {
-            matched.add(j);
+            matchedIndices.add(index);
             foundMatch = true;
             break;
           }
@@ -63,174 +65,177 @@ function areStructurallyEquivalent(node1, node2) {
       return true;
 
     default:
-      // For other node types, use simple comparison
-      return clean1 === clean2;
+      // Para outros tipos de nó, usa comparação simples
+      return cleanedExpression1 === cleanedExpression2;
   }
 }
 
-function getChildren(node) {
+function getAllChildren(node) {
   if (node.children) return node.children;
   if (node.left && node.right) return [node.left, node.right];
   return [];
 }
 
-function arraysEqual(arr1, arr2) {
-  if (arr1.length !== arr2.length) return false;
-  return arr1.every((item, i) => item === arr2[i]);
+function areArraysEqual(array1, array2) {
+  if (array1.length !== array2.length) return false;
+  return array1.every((item, index) => item === array2[index]);
 }
 
-// Test cases with expected results
-const examples = [
+// Casos de teste com resultados esperados
+const testExamples = [
   {
     input: "P \\lor \\neg P",
-    description: "Tautology: P or not P",
-    expectedFNC: "\\top", // Should simplify to true
-    expectedFND: "\\top", // Should simplify to true
-    expectedSteps: 9, // Number of transformation steps expected
+    description: "Tautologia: P ou não P",
+    expectedCNF: "\\top", // Deve simplificar para verdadeiro
+    expectedDNF: "\\top", // Deve simplificar para verdadeiro
+    expectedStepsCount: 9, // Número esperado de passos de transformação
   },
   {
     input: "P \\land \\neg P",
-    description: "Contradiction: P and not P",
-    expectedFNC: "\\bot", // Should simplify to false
-    expectedFND: "\\bot", // Should simplify to false
-    expectedSteps: 9,
+    description: "Contradição: P e não P",
+    expectedCNF: "\\bot", // Deve simplificar para falso
+    expectedDNF: "\\bot", // Deve simplificar para falso
+    expectedStepsCount: 9,
   },
   {
     input: "(P \\land Q) \\rightarrow R",
-    description: "Simple implication",
-    expectedFNC: "(\\neg P \\lor \\neg Q \\lor R)", // Should be in CNF
-    expectedFND: "(\\neg P \\lor \\neg Q \\lor R)", // Same as CNF for this case
-    expectedSteps: 9,
+    description: "Implicação simples",
+    expectedCNF: "(\\neg P \\lor \\neg Q \\lor R)", // Deve estar em FNC
+    expectedDNF: "(\\neg P \\lor \\neg Q \\lor R)", // Mesmo que FNC para este caso
+    expectedStepsCount: 9,
   },
   {
     input: "\\neg (A \\land B)",
-    description: "Negation of conjunction (De Morgan)",
-    expectedFNC: "(\\neg A \\lor \\neg B)", // Should be in CNF
-    expectedFND: "(\\neg A \\lor \\neg B)", // Same as CNF
-    expectedSteps: 9,
+    description: "Negação de conjunção (De Morgan)",
+    expectedCNF: "(\\neg A \\lor \\neg B)", // Deve estar em FNC
+    expectedDNF: "(\\neg A \\lor \\neg B)", // Mesmo que FNC
+    expectedStepsCount: 9,
   },
   {
     input: "\\neg (A \\lor B)",
-    description: "Negation of disjunction (De Morgan)",
-    expectedFNC: "(\\neg A \\land \\neg B)", // Should be in CNF
-    expectedFND: "(\\neg A \\land \\neg B)", // Same as CNF
-    expectedSteps: 9,
+    description: "Negação de disjunção (De Morgan)",
+    expectedCNF: "(\\neg A \\land \\neg B)", // Deve estar em FNC
+    expectedDNF: "(\\neg A \\land \\neg B)", // Mesmo que FNC
+    expectedStepsCount: 9,
   },
   {
     input: "A \\leftrightarrow B",
-    description: "Biconditional",
-    expectedFNC: "(\\neg A \\lor B) \\land (\\neg B \\lor A)", // Should be in CNF
-    expectedFND: "(A \\land B) \\lor (\\neg A \\land \\neg B)", // Should be in DNF
-    expectedSteps: 9,
+    description: "Bicondicional",
+    expectedCNF: "(\\neg A \\lor B) \\land (\\neg B \\lor A)", // Deve estar em FNC
+    expectedDNF: "(A \\land B) \\lor (\\neg A \\land \\neg B)", // Deve estar em FND
+    expectedStepsCount: 9,
   },
   {
     input: "P \\land (Q \\lor R)",
-    description: "Distribution test case 1",
-    expectedFNC: "(P) \\land (Q \\lor R)", // Should remain as is
-    expectedFND: "(P \\land Q) \\lor (P \\land R)", // Should distribute
-    expectedSteps: 9,
+    description: "Caso de teste de distribuição 1",
+    expectedCNF: "(P) \\land (Q \\lor R)", // Deve permanecer como está
+    expectedDNF: "(P \\land Q) \\lor (P \\land R)", // Deve distribuir
+    expectedStepsCount: 9,
   },
   {
     input: "(P \\land Q) \\lor (P \\land R)",
-    description: "Distribution test case 2",
-    expectedFNC: "(P) \\land (Q \\lor R)", // Should factor
-    expectedFND: "(P \\land Q) \\lor (P \\land R)", // Should remain as is
-    expectedSteps: 9,
+    description: "Caso de teste de distribuição 2",
+    expectedCNF: "(P) \\land (Q \\lor R)", // Deve fatorar
+    expectedDNF: "(P \\land Q) \\lor (P \\land R)", // Deve permanecer como está
+    expectedStepsCount: 9,
   },
   {
     input:
       "(P \\leftrightarrow (Q \\leftrightarrow R)) \\lor \\neg(P \\land Q \\land R)",
-    description: "Tautology with biconditionals",
-    expectedFNC: "\\top", // Should simplify to true
-    expectedFND:
+    description: "Tautologia com bicondicionais",
+    expectedCNF: "\\top", // Deve simplificar para verdadeiro
+    expectedDNF:
       "(P \\land Q \\land R) \\lor \\neg P \\lor \\neg Q \\lor \\neg R",
-    expectedSteps: 9,
+    expectedStepsCount: 9,
   },
   {
     input:
       "((P \\land Q) \\rightarrow (R \\lor S)) \\land ((R \\rightarrow P) \\lor (S \\rightarrow Q))",
-    description: "Complex formula",
-    expectedFND:
+    description: "Fórmula complexa",
+    expectedDNF:
       "(\\neg P \\land \\neg R) \\lor (\\neg P \\land \\neg S) \\lor (\\neg P \\land Q) \\lor (\\neg Q \\land \\neg R) \\lor (\\neg Q \\land P) \\lor (\\neg Q \\land \\neg S) \\lor (R \\land P) \\lor (R \\land \\neg S) \\lor (R \\land Q) \\lor (S \\land \\neg R) \\lor (S \\land P) \\lor (S \\land Q)",
-    expectedSteps: 9,
+    expectedStepsCount: 9,
   },
 ];
 
-function runExample(example, index) {
+function runTestExample(testExample, index) {
   console.log("====================================");
-  console.log(`Test ${index + 1}: ${example.description}`);
-  console.log("Input:", example.input);
+  console.log(`Teste ${index + 1}: ${testExample.description}`);
+  console.log("Entrada:", testExample.input);
 
   try {
-    const consumer = tokenize(example.input);
-    const ast = parse(consumer);
+    const tokenConsumer = tokenize(testExample.input);
+    const abstractSyntaxTree = parse(tokenConsumer);
 
-    console.log("Parsed AST:", prettify(ast));
+    console.log("AST Parseado:", prettify(abstractSyntaxTree));
 
-    const passos = executarTransformacoesCompletas(ast);
+    const transformationSteps =
+      executeCompleteTransformations(abstractSyntaxTree);
 
-    // Check if we got the expected number of steps
-    if (passos.length !== example.expectedSteps) {
+    // Verifica se obtivemos o número esperado de passos
+    if (transformationSteps.length !== testExample.expectedStepsCount) {
       console.warn(
-        `⚠️  Expected ${example.expectedSteps} steps, got ${passos.length}`
+        `⚠️  Esperado ${testExample.expectedStepsCount} passos, obtido ${transformationSteps.length}`
       );
     }
 
-    // Extract FNC and FND from the transformation steps
-    let actualFNC = null;
-    let actualFND = null;
+    // Extrai FNC e FND dos passos de transformação
+    let actualCNF = null;
+    let actualDNF = null;
 
-    for (const passo of passos) {
-      if (passo.nome === "Forma Normal Conjuntiva Prenex") {
-        actualFNC = passo.resultado;
+    for (const step of transformationSteps) {
+      if (step.name === "Forma Normal Conjuntiva Prenex") {
+        actualCNF = step.result;
       }
-      if (passo.nome === "Forma Normal Disjuntiva Prenex") {
-        actualFND = passo.resultado;
+      if (step.name === "Forma Normal Disjuntiva Prenex") {
+        actualDNF = step.result;
       }
     }
 
-    console.log("FNC Result:", actualFNC);
-    console.log("FND Result:", actualFND);
+    console.log("Resultado FNC:", actualCNF);
+    console.log("Resultado FND:", actualDNF);
 
-    // Check against expected results if provided
-    if (example.expectedFNC) {
-      const expectedFNCAST = parse(tokenize(example.expectedFNC));
-      const actualFNCAST = parse(tokenize(actualFNC));
+    // Verifica contra resultados esperados se fornecidos
+    if (testExample.expectedCNF) {
+      const expectedCNFAST = parse(tokenize(testExample.expectedCNF));
+      const actualCNFAST = parse(tokenize(actualCNF));
 
-      if (areEquivalent(expectedFNCAST, actualFNCAST)) {
-        console.log("✅ FNC matches expected result");
+      if (areEquivalent(expectedCNFAST, actualCNFAST)) {
+        console.log("✅ FNC corresponde ao resultado esperado");
       } else {
-        console.log("❌ FNC does NOT match expected result");
-        console.log("Expected FNC:", example.expectedFNC);
+        console.log("❌ FNC NÃO corresponde ao resultado esperado");
+        console.log("FNC Esperado:", testExample.expectedCNF);
       }
     }
 
-    if (example.expectedFND) {
-      const expectedFNDAST = parse(tokenize(example.expectedFND));
-      const actualFNDAST = parse(tokenize(actualFND));
+    if (testExample.expectedDNF) {
+      const expectedDNF_AST = parse(tokenize(testExample.expectedDNF));
+      const actualDNF_AST = parse(tokenize(actualDNF));
 
-      if (areEquivalent(expectedFNDAST, actualFNDAST)) {
-        console.log("✅ FND matches expected result");
+      if (areEquivalent(expectedDNF_AST, actualDNF_AST)) {
+        console.log("✅ FND corresponde ao resultado esperado");
       } else {
-        console.log("❌ FND does NOT match expected result");
-        console.log("Expected FND:", example.expectedFND);
+        console.log("❌ FND NÃO corresponde ao resultado esperado");
+        console.log("FND Esperado:", testExample.expectedDNF);
       }
     }
 
-    // Show all transformation steps
-    console.log("\nTransformation steps:");
-    passos.forEach((passo, i) => {
-      console.log(`${i + 1}. ${passo.nome}: ${passo.resultado}`);
+    // Mostra todos os passos de transformação
+    console.log("\nPassos de transformação:");
+    transformationSteps.forEach((step, stepIndex) => {
+      console.log(`${stepIndex + 1}. ${step.name}: ${step.result}`);
     });
   } catch (error) {
-    console.error("❌ Error processing example:", error.message);
+    console.error("❌ Erro processando exemplo:", error.message);
   }
 
   console.log("\n");
 }
 
-// Run all examples
+// Executa todos os exemplos de teste
 console.log(
-  "+++++++++++++++++++++ LOGIC TRANSFORMATION TESTS +++++++++++++++++++++"
+  "+++++++++++++++++++++ TESTES DE TRANSFORMAÇÃO LÓGICA +++++++++++++++++++++"
 );
-examples.forEach((example, index) => runExample(example, index));
+testExamples.forEach((testExample, index) =>
+  runTestExample(testExample, index)
+);

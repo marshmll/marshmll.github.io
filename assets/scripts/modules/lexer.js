@@ -1,3 +1,4 @@
+// Mapeamento de tipos de tokens para lógica proposicional e de predicados
 export const TokenType = {
   UNKNOWN: "UNKNOWN",
   CONJUNCTION: "CONJUNCTION",
@@ -19,6 +20,7 @@ export const TokenType = {
   EXISTS: "EXISTS",
 };
 
+// Mapeamento de literais para seus respectivos tipos de token
 export const LiteralTokenMap = {
   "\\land": TokenType.CONJUNCTION,
   "\\wedge": TokenType.CONJUNCTION,
@@ -41,97 +43,104 @@ export const LiteralTokenMap = {
   "\\exists": TokenType.EXISTS,
 };
 
+// Consumidor de tokens para navegar pela lista de tokens
 export class TokenConsumer {
   constructor(tokens) {
     this.currentIndex = 0;
     this.tokens = tokens;
   }
 
+  // Retorna o próximo token sem consumi-lo (lookahead)
   peek() {
     if (this.currentIndex >= this.tokens.length) return null;
     return this.tokens[this.currentIndex];
   }
 
+  // Retorna o próximo token e avança o índice
   next() {
     if (this.currentIndex >= this.tokens.length) return null;
     return this.tokens[this.currentIndex++];
   }
 }
 
-function isPrefixOfAnyKey(buf) {
-  return Object.keys(LiteralTokenMap).some((k) => k.startsWith(buf));
+// Verifica se o buffer é prefixo de alguma chave no mapa de tokens
+function isPrefixOfAnyKey(buffer) {
+  return Object.keys(LiteralTokenMap).some((key) => key.startsWith(buffer));
 }
 
+// Função auxiliar para criar objetos token
 function createToken(type, literal, position = -1) {
   return { type, literal, position };
 }
 
+// Função principal de tokenização - converte string em tokens
 export function tokenize(input = "") {
-  let buf = "";
-  const chars = input.split("");
+  let buffer = "";
+  const characters = input.split("");
   const tokens = [];
 
-  for (let i = 0; i < chars.length; i++) {
-    const c = chars[i];
+  for (let currentIndex = 0; currentIndex < characters.length; currentIndex++) {
+    const currentCharacter = characters[currentIndex];
 
-    // Handle single propositional variables (P, Q, R, x, y, z)
+    // Manipula variáveis proposicionais únicas (P, Q, R, x, y, z)
     if (
-      /^[a-zA-Z]$/.test(c) &&
-      !/^[a-zA-Z]$/.test(chars[i + 1]) &&
-      !/^[a-zA-Z]$/.test(chars[i - 1])
+      /^[a-zA-Z]$/.test(currentCharacter) &&
+      !/^[a-zA-Z]$/.test(characters[currentIndex + 1]) &&
+      !/^[a-zA-Z]$/.test(characters[currentIndex - 1])
     ) {
-      if (buf.length > 0) {
-        // Flush pending buffer first
-        if (LiteralTokenMap[buf]) {
-          tokens.push(createToken(LiteralTokenMap[buf], buf, i));
+      if (buffer.length > 0) {
+        // Processa buffer pendente primeiro
+        if (LiteralTokenMap[buffer]) {
+          tokens.push(
+            createToken(LiteralTokenMap[buffer], buffer, currentIndex)
+          );
         } else {
-          tokens.push(createToken(TokenType.UNKNOWN, buf.i));
+          tokens.push(createToken(TokenType.UNKNOWN, buffer, currentIndex));
         }
-        buf = "";
+        buffer = "";
       }
 
-      // Handle predicates
-      if (chars[i + 1] == "(") {
-        while (i < chars.length) {
-          buf += chars[i];
-          if (chars[i] == ")") break;
-          i++;
+      // Manipula predicados (ex: P(x))
+      if (characters[currentIndex + 1] == "(") {
+        while (currentIndex < characters.length) {
+          buffer += characters[currentIndex];
+          if (characters[currentIndex] == ")") break;
+          currentIndex++;
         }
 
-        tokens.push(createToken(TokenType.PREDICATE, buf, i));
-        buf = "";
+        tokens.push(createToken(TokenType.PREDICATE, buffer, currentIndex));
+        buffer = "";
       } else {
-        tokens.push(createToken(TokenType.VAR, c, i));
+        tokens.push(createToken(TokenType.VAR, currentCharacter, currentIndex));
       }
 
       continue;
     }
 
-    if (c === " ") continue; // skip whitespace
+    if (currentCharacter === " ") continue; // ignora espaços em branco
 
-    buf += c;
+    buffer += currentCharacter;
 
-    // Exact match with known token
-    if (LiteralTokenMap[buf]) {
-      tokens.push(createToken(LiteralTokenMap[buf], buf, i));
-      buf = "";
+    // Caso de correspondência exata com token conhecido
+    if (LiteralTokenMap[buffer]) {
+      tokens.push(createToken(LiteralTokenMap[buffer], buffer, currentIndex));
+      buffer = "";
       continue;
     }
 
-    // If buf is not a prefix of any token, flush as unknown
-    if (!isPrefixOfAnyKey(buf)) {
-      tokens.push(createToken(TokenType.UNKNOWN, buf, i));
-
-      buf = "";
+    // Se o buffer não é prefixo de nenhum token, trata como desconhecido
+    if (!isPrefixOfAnyKey(buffer)) {
+      tokens.push(createToken(TokenType.UNKNOWN, buffer, currentIndex));
+      buffer = "";
     }
   }
 
-  // Flush leftover buffer at the end
-  if (buf.length > 0) {
-    if (LiteralTokenMap[buf]) {
-      tokens.push(LiteralTokenMap[buf]);
+  // Processa qualquer conteúdo restante no buffer ao final
+  if (buffer.length > 0) {
+    if (LiteralTokenMap[buffer]) {
+      tokens.push(createToken(LiteralTokenMap[buffer], buffer, currentIndex));
     } else {
-      tokens.push(createToken(TokenType.UNKNOWN, buf, i));
+      tokens.push(createToken(TokenType.UNKNOWN, buffer, currentIndex));
     }
   }
 

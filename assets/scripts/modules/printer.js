@@ -1,5 +1,6 @@
 import { TokenType } from "./lexer.js";
 
+// Função principal para formatar a AST em uma string bonita
 export function prettify(node) {
   switch (node.type) {
     case TokenType.VAR:
@@ -19,7 +20,9 @@ export function prettify(node) {
 
     case TokenType.CONJUNCTION:
       return node.children && node.children.length > 0
-        ? node.children.map((c) => wrapIfNeeded(c, node)).join(" \\land ")
+        ? node.children
+            .map((child) => wrapIfNeeded(child, node))
+            .join(" \\land ")
         : `${wrapIfNeeded(node.left, node)} \\land ${wrapIfNeeded(
             node.right,
             node
@@ -27,7 +30,9 @@ export function prettify(node) {
 
     case TokenType.DISJUNCTION:
       return node.children && node.children.length > 0
-        ? node.children.map((c) => wrapIfNeeded(c, node)).join(" \\lor ")
+        ? node.children
+            .map((child) => wrapIfNeeded(child, node))
+            .join(" \\lor ")
         : `${wrapIfNeeded(node.left, node)} \\lor ${wrapIfNeeded(
             node.right,
             node
@@ -52,15 +57,16 @@ export function prettify(node) {
       return "\\bot";
 
     default:
-      throw new Error("Unknown AST node type: " + node.type);
+      throw new Error("Tipo de nó AST desconhecido: " + node.type);
   }
 }
 
-function wrapIfNeeded(child, parent) {
-  if (!child) return "";
+// Função auxiliar para adicionar parênteses quando necessário baseado na precedência
+function wrapIfNeeded(childNode, parentNode) {
+  if (!childNode) return "";
 
-  // precedence: higher = binds tighter
-  const prec = {
+  // Tabela de precedência: valores mais altos = ligação mais forte
+  const precedenceTable = {
     EXISTS: 7,
     FORALL: 7,
     PREDICATE: 6,
@@ -72,23 +78,23 @@ function wrapIfNeeded(child, parent) {
     BICONDITIONAL: 1,
   };
 
-  const childPrec = prec[child.type] || 0;
-  const parentPrec = prec[parent.type] || 0;
+  const childPrecedence = precedenceTable[childNode.type] || 0;
+  const parentPrecedence = precedenceTable[parentNode.type] || 0;
 
-  const childStr = prettify(child);
+  const childString = prettify(childNode);
 
-  // if child precedence is strictly lower, wrap
-  if (childPrec < parentPrec) {
-    return `(${childStr})`;
+  // Se a precedência do filho é estritamente menor, envolve com parênteses
+  if (childPrecedence < parentPrecedence) {
+    return `(${childString})`;
   }
 
-  // ensure (A ∧ B) inside ∨ gets wrapped
+  // Garante que (A ∧ B) dentro de ∨ seja envolvido com parênteses
   if (
-    parent.type === TokenType.DISJUNCTION &&
-    child.type === TokenType.CONJUNCTION
+    parentNode.type === TokenType.DISJUNCTION &&
+    childNode.type === TokenType.CONJUNCTION
   ) {
-    return `(${childStr})`;
+    return `(${childString})`;
   }
 
-  return childStr;
+  return childString;
 }

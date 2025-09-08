@@ -1,215 +1,253 @@
 import { TokenConsumer, TokenType } from "./lexer.js";
 
-export function createNode(type, props = {}) {
-  return { type, ...props };
+// Função auxiliar para criar nós da AST
+export function createNode(type, properties = {}) {
+  return { type, ...properties };
 }
 
+// Função principal de parsing - converte tokens em AST
 export function parse(consumer = new TokenConsumer([])) {
-  const ast = parseExpression(consumer);
+  const abstractSyntaxTree = parseExpression(consumer);
 
+  // Verifica se há tokens restantes não processados
   if (consumer.peek() !== null) {
     throw new Error(`Token inesperado: ${JSON.stringify(consumer.peek())}`);
   }
 
-  return ast;
+  return abstractSyntaxTree;
 }
 
+// Inicia o parsing a partir do nível de expressão
 function parseExpression(consumer) {
   return parseBiconditional(consumer);
 }
 
+// Parsing de bicondicionais (↔)
 function parseBiconditional(consumer) {
-  let left = parseImplication(consumer);
+  let leftNode = parseImplication(consumer);
 
   while (consumer.peek()?.type === TokenType.BICONDITIONAL) {
     consumer.next();
-    const right = parseImplication(consumer);
-    left = createNode(TokenType.BICONDITIONAL, { left, right });
+    const rightNode = parseImplication(consumer);
+    leftNode = createNode(TokenType.BICONDITIONAL, {
+      left: leftNode,
+      right: rightNode,
+    });
   }
 
-  return left;
+  return leftNode;
 }
 
+// Parsing de implicações (→)
 function parseImplication(consumer) {
-  let left = parseDisjunction(consumer);
+  let leftNode = parseDisjunction(consumer);
 
   while (consumer.peek()?.type === TokenType.IMPLIES) {
     consumer.next();
-    const right = parseDisjunction(consumer);
-    left = createNode(TokenType.IMPLIES, { left, right });
+    const rightNode = parseDisjunction(consumer);
+    leftNode = createNode(TokenType.IMPLIES, {
+      left: leftNode,
+      right: rightNode,
+    });
   }
 
-  return left;
+  return leftNode;
 }
 
+// Parsing de disjunções (∨)
 function parseDisjunction(consumer) {
-  let left = parseConjunction(consumer);
+  let leftNode = parseConjunction(consumer);
 
   while (consumer.peek()?.type === TokenType.DISJUNCTION) {
     consumer.next();
-    const right = parseConjunction(consumer);
-    left = createNode(TokenType.DISJUNCTION, { left, right });
+    const rightNode = parseConjunction(consumer);
+    leftNode = createNode(TokenType.DISJUNCTION, {
+      left: leftNode,
+      right: rightNode,
+    });
   }
 
-  return left;
+  return leftNode;
 }
 
+// Parsing de conjunções (∧)
 function parseConjunction(consumer) {
-  let left = parseUnary(consumer);
+  let leftNode = parseUnary(consumer);
 
   while (consumer.peek()?.type === TokenType.CONJUNCTION) {
     consumer.next();
-    const right = parseDisjunction(consumer);
-    left = createNode(TokenType.CONJUNCTION, { left, right });
+    const rightNode = parseDisjunction(consumer);
+    leftNode = createNode(TokenType.CONJUNCTION, {
+      left: leftNode,
+      right: rightNode,
+    });
   }
 
-  return left;
+  return leftNode;
 }
 
+// Parsing de operadores unários (¬)
 function parseUnary(consumer) {
   if (consumer.peek()?.type === TokenType.NEGATION) {
     consumer.next();
-    const child = parseUnary(consumer);
-    return createNode(TokenType.NEGATION, { child });
+    const childNode = parseUnary(consumer);
+    return createNode(TokenType.NEGATION, { child: childNode });
   }
 
   return parseQuantifiers(consumer);
 }
 
+// Parsing de quantificadores (∀, ∃)
 function parseQuantifiers(consumer) {
-  const type = consumer.peek()?.type;
+  const tokenType = consumer.peek()?.type;
 
-  if ([TokenType.FORALL, TokenType.EXISTS].includes(type)) {
-    consumer.next(); // consume ∀ or ∃
+  if ([TokenType.FORALL, TokenType.EXISTS].includes(tokenType)) {
+    consumer.next(); // consome ∀ ou ∃
 
-    // expect a variable right after
+    // Espera uma variável logo após o quantificador
     const variableToken = consumer.peek();
     if (!variableToken || variableToken.type !== TokenType.VAR) {
       throw new Error(
-        `Expected variable after quantifier, got ${variableToken?.literal}`
+        `Esperava variável após quantificador, obteve ${variableToken?.literal}`
       );
     }
 
-    // Check if is a lowercase variable
+    // Verifica se é uma variável minúscula
     if (variableToken.literal !== variableToken.literal.toLowerCase()) {
       throw new Error(
-        `Variáveis depois de quantificadores devem ser letras minúsculas (variável ${variableToken?.literal})`
+        `Variáveis após quantificadores devem ser letras minúsculas (variável ${variableToken?.literal})`
       );
     }
 
-    consumer.next(); // consume variable
+    consumer.next(); // consome a variável
 
-    // parse the formula scope of the quantifier
-    const child = parseQuantifiers(consumer) || parsePrimary(consumer);
+    // Parseia o escopo da fórmula do quantificador
+    const childNode = parseQuantifiers(consumer) || parsePrimary(consumer);
 
-    return createNode(type, { variable: variableToken.literal, child });
+    return createNode(tokenType, {
+      variable: variableToken.literal,
+      child: childNode,
+    });
   }
 
   return parsePrimary(consumer);
 }
 
+// Parsing de elementos primários (variáveis, predicados, constantes, parênteses)
 function parsePrimary(consumer) {
-  const token = consumer.peek();
+  const currentToken = consumer.peek();
 
-  if (!token) throw new Error("Fim de input inesperado");
+  if (!currentToken) throw new Error("Fim de input inesperado");
 
-  if (token.type === TokenType.VAR) {
+  if (currentToken.type === TokenType.VAR) {
     consumer.next();
-    return createNode(TokenType.VAR, { name: token.literal });
+    return createNode(TokenType.VAR, { name: currentToken.literal });
   }
 
-  if (token.type === TokenType.PREDICATE) {
-    const literal = token.literal;
+  if (currentToken.type === TokenType.PREDICATE) {
+    const literal = currentToken.literal;
 
-    // Get string inside the parenthesis
+    // Extrai string dentro dos parênteses
     const regex = /\(([^)]+)\)/;
-    const match = literal.match(regex);
+    const matchResult = literal.match(regex);
 
-    if (!match || !match[1] || match[1].length === 0) {
+    if (!matchResult || !matchResult[1] || matchResult[1].length === 0) {
       throw new Error(
-        `Nenhum argumento pôde ser extraído do predicado: ${token.literal}`
+        `Nenhum argumento pôde ser extraído do predicado: ${currentToken.literal}`
       );
     }
 
-    // split args: P(x, y) => ["x", "y"];
-    const args = match[1]
+    // Divide argumentos: P(x, y) => ["x", "y"]
+    const argumentsList = matchResult[1]
       .split(",")
-      .map((c) => c.trim())
-      .filter((c) => {
-        if (c.length === 0) {
+      .map((argument) => argument.trim())
+      .filter((argument) => {
+        if (argument.length === 0) {
           throw new Error(
-            `Erro de sintaxe para o predicado ${literal}: ${c}. Verifique vírgulas.`
+            `Erro de sintaxe para o predicado ${literal}: ${argument}. Verifique vírgulas.`
           );
         }
 
-        if (/^\\s*$/.test(c)) return false;
+        if (/^\\s*$/.test(argument)) return false;
 
-        if (c.length > 1) {
+        if (argument.length > 1) {
           throw new Error(
-            `Argumento inválido para o predicado ${literal}: ${c}. Argumentos dever ser apenas letras únicas.`
+            `Argumento inválido para o predicado ${literal}: ${argument}. Argumentos devem ser apenas letras únicas.`
           );
         }
 
-        if (c !== c.toLowerCase()) {
+        if (argument !== argument.toLowerCase()) {
           throw new Error(
-            `Argumento inválido para o predicado ${literal}: ${c}. Argumentos dever letras minúsculas.`
+            `Argumento inválido para o predicado ${literal}: ${argument}. Argumentos devem ser letras minúsculas.`
           );
         }
 
         return true;
       });
 
-    if (args.length === 0) {
-      throw new Error(`Predicado não forneceu argumentos: ${token.literal}`);
+    if (argumentsList.length === 0) {
+      throw new Error(
+        `Predicado não forneceu argumentos: ${currentToken.literal}`
+      );
     }
 
     consumer.next();
-    return createNode(TokenType.PREDICATE, { name: literal[0], args });
-  }
-
-  if (token.type === TokenType.TRUE || token.type === TokenType.FALSE) {
-    consumer.next();
-    return createNode(token.type);
-  }
-
-  if (token.type === TokenType.NEGATION) {
-    consumer.next();
-    const child = parseUnary(consumer);
-    return createNode(TokenType.NEGATION, { child });
-  }
-
-  if (token.type === TokenType.UNKNOWN) {
-    throw new Error(`Erro de sintaxe: ${token.literal}`);
+    return createNode(TokenType.PREDICATE, {
+      name: literal[0],
+      args: argumentsList,
+    });
   }
 
   if (
-    token.type === TokenType.LPAREN ||
-    token.type === TokenType.LBRACE ||
-    token.type === TokenType.LBRACKET
+    currentToken.type === TokenType.TRUE ||
+    currentToken.type === TokenType.FALSE
+  ) {
+    consumer.next();
+    return createNode(currentToken.type);
+  }
+
+  if (currentToken.type === TokenType.NEGATION) {
+    consumer.next();
+    const childNode = parseUnary(consumer);
+    return createNode(TokenType.NEGATION, { child: childNode });
+  }
+
+  if (currentToken.type === TokenType.UNKNOWN) {
+    throw new Error(`Erro de sintaxe: ${currentToken.literal}`);
+  }
+
+  // Parsing de expressões entre parênteses/colchetes/chaves
+  if (
+    currentToken.type === TokenType.LPAREN ||
+    currentToken.type === TokenType.LBRACE ||
+    currentToken.type === TokenType.LBRACKET
   ) {
     consumer.next();
 
-    const expr = parseExpression(consumer);
+    const expressionNode = parseExpression(consumer);
 
-    const closingSymbol = consumer.peek();
+    const closingToken = consumer.peek();
 
-    const expected = {
+    const expectedClosingToken = {
       LPAREN: TokenType.RPAREN,
       LBRACE: TokenType.RBRACE,
       LBRACKET: TokenType.RBRACKET,
     };
 
-    if (!closingSymbol || closingSymbol.type !== expected[token.type]) {
+    if (
+      !closingToken ||
+      closingToken.type !== expectedClosingToken[currentToken.type]
+    ) {
       throw new Error(
         `Parênteses/colchetes/chaves não foi fechado (esperado: "${
-          expected[token.type]
-        }", encontrado "${closingSymbol?.literal}")`
+          expectedClosingToken[currentToken.type]
+        }", encontrado "${closingToken?.literal}")`
       );
     }
 
     consumer.next();
-    return expr;
+    return expressionNode;
   }
 
-  throw new Error(`Token inesperado: ${token.literal}`);
+  throw new Error(`Token inesperado: ${currentToken.literal}`);
 }
