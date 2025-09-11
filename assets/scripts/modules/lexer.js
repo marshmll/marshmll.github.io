@@ -27,6 +27,7 @@ export const LiteralTokenMap = {
   "\\lor": TokenType.DISJUNCTION,
   "\\vee": TokenType.DISJUNCTION,
   "\\rightarrow": TokenType.IMPLIES,
+  "\\implies": TokenType.IMPLIES,
   "\\leftrightarrow": TokenType.BICONDITIONAL,
   "\\iff": TokenType.BICONDITIONAL,
   "\\neg": TokenType.NEGATION,

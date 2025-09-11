@@ -92,6 +92,13 @@ export function transformFormula(ast) {
     result: clausalForm,
   });
 
+  // Passo 10: Identificar Cláusulas de Horn
+  const hornClauses = getHornClauses(convertToCNF(withoutUniversalQuantifiers));
+  transformationSteps.push({
+    name: "Cláusulas de Horn",
+    result: hornClauses,
+  });
+
   return transformationSteps;
 }
 
@@ -218,7 +225,7 @@ function moveNegationsInward(ast) {
 }
 
 // Sequência padrão de nomes de variáveis para padronização
-const variableSequence = ["x", "y", "z", "u", "v", "w"];
+const variableSequence = ["x", "y", "z", "u", "v", "w", "\\alpha", "\\beta", "\\gamma", "\\delta"];
 
 // Padroniza nomes de variáveis para evitar conflitos
 function standardizeVariables(
@@ -737,6 +744,124 @@ function getClausalForm(ast) {
   }
 
   return `C_{1}: ${prettify(normalizedTree)}`;
+}
+
+// Obtém Cláusulas de Horn
+function getHornClauses(ast) {
+  if (!ast) return "\\texttt{Nenhuma Cláusula de Horn}";
+
+  const normalizedTree = normalizeBinaryToNaryTree(ast);
+
+  let clauses = [];
+
+  if (normalizedTree.type === TokenType.CONJUNCTION) {
+    clauses = normalizedTree.children.filter((child) => child);
+  } else {
+    clauses = [normalizedTree];
+  }
+
+  const hornClauses = [];
+
+  clauses.forEach((clause, index) => {
+    if (isHornClause(clause)) {
+      const clauseType = getHornClauseType(clause);
+      hornClauses.push(`C_{${index + 1}} (${clauseType}): ${prettify(clause)}`);
+    }
+  });
+
+  if (hornClauses.length === 0) {
+    return "\\texttt{Nenhuma Cláusula de Horn}";
+  }
+
+  return hornClauses.join("\\\\");
+}
+
+// Verifica se uma cláusula é uma Cláusula de Horn
+function isHornClause(clause) {
+  if (!clause) return false;
+
+  // Extrai todos os literais da cláusula
+  const literals = extractLiterals(clause);
+
+  // Conta literais positivos
+  let positiveCount = 0;
+
+  for (const literal of literals) {
+    if (isPositiveLiteral(literal)) {
+      positiveCount++;
+      // Se tem mais de 1 literal positivo, não é Horn
+      if (positiveCount > 1) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+// Determina o tipo da Cláusula de Horn
+function getHornClauseType(clause) {
+  const literals = extractLiterals(clause);
+  let positiveCount = 0;
+  let negativeCount = 0;
+
+  for (const literal of literals) {
+    if (isPositiveLiteral(literal)) {
+      positiveCount++;
+    } else {
+      negativeCount++;
+    }
+  }
+
+  if (positiveCount === 1 && negativeCount === 0) {
+    return "Fato"; // Apenas um literal positivo (ex: P)
+  } else if (positiveCount === 1 && negativeCount > 0) {
+    return "Regra"; // Um positivo e um ou mais negativos (ex: ¬P ∨ Q)
+  } else if (positiveCount === 0 && negativeCount > 0) {
+    return "Objetivo"; // Apenas literais negativos (ex: ¬P ∨ ¬Q)
+  } else if (positiveCount === 0 && negativeCount === 0) {
+    return "Vazia"; // Cláusula vazia
+  }
+
+  return "Desconhecido";
+}
+
+// Extrai todos os literais de uma cláusula (disjunção)
+function extractLiterals(node) {
+  const literals = [];
+
+  function extractRecursive(currentNode) {
+    if (!currentNode) return;
+
+    if (currentNode.type === TokenType.DISJUNCTION) {
+      if (currentNode.children) {
+        currentNode.children.forEach(extractRecursive);
+      } else if (currentNode.left && currentNode.right) {
+        extractRecursive(currentNode.left);
+        extractRecursive(currentNode.right);
+      }
+    } else {
+      literals.push(currentNode);
+    }
+  }
+
+  extractRecursive(node);
+  return literals;
+}
+
+// Verifica se um literal é positivo
+function isPositiveLiteral(node) {
+  if (!node) return false;
+
+  if (node.type === TokenType.NEGATION) {
+    return false;
+  }
+
+  return (
+    node.type === TokenType.VAR ||
+    node.type === TokenType.PREDICATE ||
+    node.type === TokenType.TRUE
+  );
 }
 
 // Função principal para executar todas as transformações
