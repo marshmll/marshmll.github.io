@@ -44,11 +44,51 @@ export const LiteralTokenMap = {
   "\\exists": TokenType.EXISTS,
 };
 
+// Custom error class for lexing errors with position information
+export class LexingError extends Error {
+  constructor(message, position, input) {
+    super(message);
+    this.name = "LexingError";
+    this.position = position;
+    this.input = input;
+
+    // Generate error display with pointer to the error position
+    this.displayMessage = this.generateDisplayMessage();
+  }
+
+  generateDisplayMessage() {
+    if (this.position === undefined || this.position < 0 || !this.input) {
+      return this.message;
+    }
+
+    const lines = this.input.split("\n");
+    let currentPos = 0;
+    let lineNum = 0;
+    let columnNum = 0;
+
+    // Find the line and column where the error occurred
+    for (let i = 0; i < lines.length; i++) {
+      if (currentPos + lines[i].length >= this.position) {
+        lineNum = i + 1;
+        columnNum = this.position - currentPos + 1;
+        break;
+      }
+      currentPos += lines[i].length + 1; // +1 for the newline character
+    }
+
+    const errorLine = lines[lineNum - 1];
+    const pointer = " ".repeat(columnNum - 1) + "^";
+
+    return `${this.message}\n\nAt line ${lineNum}, column ${columnNum}:\n\n${errorLine}\n${pointer}`;
+  }
+}
+
 // Consumidor de tokens para navegar pela lista de tokens
 export class TokenConsumer {
-  constructor(tokens) {
+  constructor(tokens, originalInput = "") {
     this.currentIndex = 0;
     this.tokens = tokens;
+    this.originalInput = originalInput;
   }
 
   // Retorna o próximo token sem consumi-lo (lookahead)
@@ -61,6 +101,14 @@ export class TokenConsumer {
   next() {
     if (this.currentIndex >= this.tokens.length) return null;
     return this.tokens[this.currentIndex++];
+  }
+
+  // Retorna a posição atual da cabeça de leitura.
+  getCurrentPosition() {
+    if (this.currentIndex >= this.tokens.length) {
+      return this.originalInput.length;
+    }
+    return this.tokens[this.currentIndex].position;
   }
 }
 
@@ -93,23 +141,52 @@ export function tokenize(input = "") {
         // Processa buffer pendente primeiro
         if (LiteralTokenMap[buffer]) {
           tokens.push(
-            createToken(LiteralTokenMap[buffer], buffer, currentIndex)
+            createToken(
+              LiteralTokenMap[buffer],
+              buffer,
+              currentIndex - buffer.length
+            )
           );
         } else {
-          tokens.push(createToken(TokenType.UNKNOWN, buffer, currentIndex));
+          // Verifica se o buffer é prefixo de um token conhecido mas não está completo
+          if (isPrefixOfAnyKey(buffer)) {
+            throw new LexingError(
+              `Sequência incompleta: '${buffer}' (talvez você quis dizer '${Object.keys(
+                LiteralTokenMap
+              ).find((key) => key.startsWith(buffer))}'?)`,
+              currentIndex - buffer.length,
+              input
+            );
+          } else {
+            throw new LexingError(
+              `Símbolo desconhecido: '${buffer}'`,
+              currentIndex - buffer.length,
+              input
+            );
+          }
         }
         buffer = "";
       }
 
       // Manipula predicados (ex: P(x))
       if (characters[currentIndex + 1] == "(") {
+        const predicateStart = currentIndex;
         while (currentIndex < characters.length) {
           buffer += characters[currentIndex];
           if (characters[currentIndex] == ")") break;
           currentIndex++;
         }
 
-        tokens.push(createToken(TokenType.PREDICATE, buffer, currentIndex));
+        // Validate predicate format
+        if (!buffer.endsWith(")")) {
+          throw new LexingError(
+            `Predicado não fechado: '${buffer}'`,
+            predicateStart,
+            input
+          );
+        }
+
+        tokens.push(createToken(TokenType.PREDICATE, buffer, predicateStart));
         buffer = "";
       } else {
         tokens.push(createToken(TokenType.VAR, currentCharacter, currentIndex));
@@ -124,26 +201,69 @@ export function tokenize(input = "") {
 
     // Caso de correspondência exata com token conhecido
     if (LiteralTokenMap[buffer]) {
-      tokens.push(createToken(LiteralTokenMap[buffer], buffer, currentIndex));
+      tokens.push(
+        createToken(
+          LiteralTokenMap[buffer],
+          buffer,
+          currentIndex - buffer.length + 1
+        )
+      );
       buffer = "";
       continue;
     }
 
     // Se o buffer não é prefixo de nenhum token, trata como desconhecido
     if (!isPrefixOfAnyKey(buffer)) {
-      tokens.push(createToken(TokenType.UNKNOWN, buffer, currentIndex));
-      buffer = "";
+      // Verifica se o buffer é um token conhecido que foi particularmente detectado
+      const possibleTokens = Object.keys(LiteralTokenMap).filter((key) =>
+        key.startsWith(buffer.substring(0, buffer.length - 1))
+      );
+
+      if (possibleTokens.length > 0) {
+        throw new LexingError(
+          `Sequência inválida: '${buffer}' (talvez você quis dizer '${possibleTokens[0]}'?)`,
+          currentIndex - buffer.length + 1,
+          input
+        );
+      } else {
+        throw new LexingError(
+          `Símbolo desconhecido: '${buffer}'`,
+          currentIndex - buffer.length + 1,
+          input
+        );
+      }
     }
   }
 
   // Processa qualquer conteúdo restante no buffer ao final
   if (buffer.length > 0) {
     if (LiteralTokenMap[buffer]) {
-      tokens.push(createToken(LiteralTokenMap[buffer], buffer, currentIndex));
+      tokens.push(
+        createToken(
+          LiteralTokenMap[buffer],
+          buffer,
+          input.length - buffer.length
+        )
+      );
     } else {
-      tokens.push(createToken(TokenType.UNKNOWN, buffer, currentIndex));
+      // Verifica se o buffer é prefixo de um token conhecido mas não está completo
+      if (isPrefixOfAnyKey(buffer)) {
+        throw new LexingError(
+          `Sequência incompleta: '${buffer}' (talvez você quis dizer '${Object.keys(
+            LiteralTokenMap
+          ).find((key) => key.startsWith(buffer))}'?)`,
+          input.length - buffer.length,
+          input
+        );
+      } else {
+        throw new LexingError(
+          `Símbolo desconhecido: '${buffer}'`,
+          input.length - buffer.length,
+          input
+        );
+      }
     }
   }
 
-  return new TokenConsumer(tokens);
+  return new TokenConsumer(tokens, input);
 }

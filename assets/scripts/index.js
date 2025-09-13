@@ -18,6 +18,7 @@ const customMacros = {
 const HIGHLIGHTED_STEPS = [
   "Forma Normal Conjuntiva Prenex",
   "Forma Normal Disjuntiva Prenex",
+  "Forma Normal Skolem",
   "Forma Clausal",
   "Cláusula de Horn",
 ];
@@ -69,6 +70,7 @@ function renderLatex(latexText, targetElement) {
     targetElement.appendChild(containerElement);
     targetElement.classList.add("has-content");
   } catch (error) {
+    console.error(error);
     targetElement.innerHTML = `<div class="text-center p-4" style="color: var(--accent);"><i class="fas fa-exclamation-circle mr-2"></i>Erro: ${error.message}</div>`;
     targetElement.classList.remove("has-content");
   }
@@ -149,6 +151,38 @@ function copyToClipboard(text) {
     });
 }
 
+// ================= Exibir Erro com Indicador de Posição =================
+function displayErrorWithIndicator(error, formula) {
+  const stepsContainer = document.getElementById("steps-content");
+
+  // Se for um ParsingError, mostra a mensagem com indicador de posição
+  if (error.displayMessage) {
+    stepsContainer.innerHTML = `
+      <div class="error-container">
+        <div class="error-header">
+          <i class="fas fa-exclamation-circle"></i>
+          <h3>Erro de Sintaxe</h3>
+        </div>
+        <div class="error-message">${error.message}</div>
+        <div class="error-location">
+          <pre class="formula-display">${formula}</pre>
+          <pre class="error-indicator">${error.displayMessage
+            .split("\n")
+            .slice(-2)
+            .join("\n")}</pre>
+        </div>
+      </div>
+    `;
+  } else {
+    // Para outros tipos de erro, mostra a mensagem simples
+    stepsContainer.innerHTML = `
+      <div class="text-center p-4" style="color: var(--accent);">
+        <i class="fas fa-exclamation-circle mr-2"></i>
+        Erro: ${error.message}
+      </div>`;
+  }
+}
+
 // ================= Event Listeners =================
 const latexInput = document.getElementById("latex-input");
 const latexOutput = document.getElementById("latex-output");
@@ -198,11 +232,8 @@ calculateButton.addEventListener("click", () => {
 
     displayTransformationSteps(transformationSteps);
   } catch (error) {
-    stepsContainer.innerHTML = `
-      <div class="text-center p-4" style="color: var(--accent);">
-        <i class="fas fa-exclamation-circle mr-2"></i>
-        Erro: ${error.message}
-      </div>`;
+    console.error(error);
+    displayErrorWithIndicator(error, formula);
   }
 });
 

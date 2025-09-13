@@ -73,7 +73,7 @@ export function transformFormula(ast) {
   // Passo 7: Skolemização
   const skolemizedForm = skolemization(prenexForm);
   transformationSteps.push({
-    name: "Skolemização",
+    name: "Forma Normal Skolem",
     result: prettify(skolemizedForm),
   });
 
@@ -225,7 +225,18 @@ function moveNegationsInward(ast) {
 }
 
 // Sequência padrão de nomes de variáveis para padronização
-const variableSequence = ["x", "y", "z", "u", "v", "w", "\\alpha", "\\beta", "\\gamma", "\\delta"];
+const variableSequence = [
+  "x",
+  "y",
+  "z",
+  "u",
+  "v",
+  "w",
+  "\\alpha",
+  "\\beta",
+  "\\gamma",
+  "\\delta",
+];
 
 // Padroniza nomes de variáveis para evitar conflitos
 function standardizeVariables(
@@ -379,7 +390,7 @@ function skolemization(ast) {
         const functionName =
           universalQuantifiers.length > 0
             ? `f_${skolemCounter.value++}`
-            : `c_${skolemCounter.value++ + 1}`;
+            : `c_${skolemCounter.value++}`;
         const skolemArguments = universalQuantifiers.map(
           (quantifier) => quantifier.variable
         );
@@ -818,7 +829,7 @@ function getHornClauseType(clause) {
   } else if (positiveCount === 1 && negativeCount > 0) {
     return "Regra"; // Um positivo e um ou mais negativos (ex: ¬P ∨ Q)
   } else if (positiveCount === 0 && negativeCount > 0) {
-    return "Objetivo"; // Apenas literais negativos (ex: ¬P ∨ ¬Q)
+    return "Consulta"; // Apenas literais negativos (ex: ¬P ∨ ¬Q)
   } else if (positiveCount === 0 && negativeCount === 0) {
     return "Vazia"; // Cláusula vazia
   }

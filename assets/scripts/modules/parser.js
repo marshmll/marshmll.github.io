@@ -1,4 +1,42 @@
-import { TokenConsumer, TokenType } from "./lexer.js";
+import { TokenConsumer, TokenType, LiteralTokenMap } from "./lexer.js";
+
+export class ParsingError extends Error {
+  constructor(message, position, input) {
+    super(message);
+    this.name = "ParsingError";
+    this.position = position;
+    this.input = input;
+
+    // Generate error display with pointer to the error position
+    this.displayMessage = this.generateDisplayMessage();
+  }
+
+  generateDisplayMessage() {
+    if (this.position === undefined || this.position < 0 || !this.input) {
+      return this.message;
+    }
+
+    const lines = this.input.split("\n");
+    let currentPos = 0;
+    let lineNum = 0;
+    let columnNum = 0;
+
+    // Find the line and column where the error occurred
+    for (let i = 0; i < lines.length; i++) {
+      if (currentPos + lines[i].length >= this.position) {
+        lineNum = i + 1;
+        columnNum = this.position - currentPos + 1;
+        break;
+      }
+      currentPos += lines[i].length + 1; // +1 for the newline character
+    }
+
+    const errorLine = lines[lineNum - 1];
+    const pointer = " ".repeat(columnNum - 1) + "^";
+
+    return `${this.message}\n\nAt line ${lineNum}, column ${columnNum}:\n\n${errorLine}\n${pointer}`;
+  }
+}
 
 // Função auxiliar para criar nós da AST
 export function createNode(type, properties = {}) {
@@ -10,8 +48,29 @@ export function parse(consumer = new TokenConsumer([])) {
   const abstractSyntaxTree = parseExpression(consumer);
 
   // Verifica se há tokens restantes não processados
-  if (consumer.peek() !== null) {
-    throw new Error(`Token inesperado: ${JSON.stringify(consumer.peek())}`);
+  const nextToken = consumer.peek();
+  if (nextToken !== null) {
+    if (
+      nextToken.type === TokenType.RPAREN ||
+      nextToken.type === TokenType.RBRACKET ||
+      nextToken.type === TokenType.RBRACE
+    ) {
+      const symbol = Object.keys(LiteralTokenMap).find(
+        (key) => LiteralTokenMap[key] === nextToken.type
+      );
+
+      throw new ParsingError(
+        `Parêntese/colchete/chave de fechamento extra: "${symbol}"`,
+        nextToken.position,
+        consumer.originalInput
+      );
+    }
+
+    throw new ParsingError(
+      `Token inesperado: ${JSON.stringify(nextToken.literal)}`,
+      nextToken.position,
+      consumer.originalInput
+    );
   }
 
   return abstractSyntaxTree;
@@ -107,15 +166,21 @@ function parseQuantifiers(consumer) {
     // Espera uma variável logo após o quantificador
     const variableToken = consumer.peek();
     if (!variableToken || variableToken.type !== TokenType.VAR) {
-      throw new Error(
-        `Esperava variável após quantificador, obteve ${variableToken?.literal}`
+      throw new ParsingError(
+        `Esperava variável após quantificador, obteve ${
+          variableToken?.literal || "nada"
+        }. Verifique espaços.`,
+        consumer.getCurrentPosition(),
+        consumer.originalInput
       );
     }
 
     // Verifica se é uma variável minúscula
     if (variableToken.literal !== variableToken.literal.toLowerCase()) {
-      throw new Error(
-        `Variáveis após quantificadores devem ser letras minúsculas (variável ${variableToken?.literal})`
+      throw new ParsingError(
+        `Variáveis após quantificadores devem ser letras minúsculas (variável ${variableToken.literal})`,
+        variableToken.position,
+        consumer.originalInput
       );
     }
 
@@ -137,11 +202,20 @@ function parseQuantifiers(consumer) {
 function parsePrimary(consumer) {
   const currentToken = consumer.peek();
 
-  if (!currentToken) throw new Error("Fim de input inesperado");
+  if (!currentToken) {
+    throw new ParsingError(
+      "Fim de input inesperado",
+      consumer.getCurrentPosition(),
+      consumer.originalInput
+    );
+  }
 
   if (currentToken.type === TokenType.VAR) {
     consumer.next();
-    return createNode(TokenType.VAR, { name: currentToken.literal });
+    return createNode(TokenType.VAR, {
+      name: currentToken.literal,
+      position: currentToken.position,
+    });
   }
 
   if (currentToken.type === TokenType.PREDICATE) {
@@ -152,8 +226,10 @@ function parsePrimary(consumer) {
     const matchResult = literal.match(regex);
 
     if (!matchResult || !matchResult[1] || matchResult[1].length === 0) {
-      throw new Error(
-        `Nenhum argumento pôde ser extraído do predicado: ${currentToken.literal}`
+      throw new ParsingError(
+        `Nenhum argumento pôde ser extraído do predicado: ${currentToken.literal}`,
+        currentToken.position,
+        consumer.originalInput
       );
     }
 
@@ -163,22 +239,28 @@ function parsePrimary(consumer) {
       .map((argument) => argument.trim())
       .filter((argument) => {
         if (argument.length === 0) {
-          throw new Error(
-            `Erro de sintaxe para o predicado ${literal}: ${argument}. Verifique vírgulas.`
+          throw new ParsingError(
+            `Erro de sintaxe para o predicado ${literal}: ${argument}. Verifique vírgulas.`,
+            currentToken.position,
+            consumer.originalInput
           );
         }
 
         if (/^\\s*$/.test(argument)) return false;
 
         if (argument.length > 1) {
-          throw new Error(
-            `Argumento inválido para o predicado ${literal}: ${argument}. Argumentos devem ser apenas letras únicas.`
+          throw new ParsingError(
+            `Argumento inválido para o predicado ${literal}: ${argument}. Argumentos devem ser apenas letras únicas.`,
+            currentToken.position,
+            consumer.originalInput
           );
         }
 
         if (argument !== argument.toLowerCase()) {
-          throw new Error(
-            `Argumento inválido para o predicado ${literal}: ${argument}. Argumentos devem ser letras minúsculas.`
+          throw new ParsingError(
+            `Argumento inválido para o predicado ${literal}: ${argument}. Argumentos devem ser letras minúsculas.`,
+            currentToken.position,
+            consumer.originalInput
           );
         }
 
@@ -186,8 +268,10 @@ function parsePrimary(consumer) {
       });
 
     if (argumentsList.length === 0) {
-      throw new Error(
-        `Predicado não forneceu argumentos: ${currentToken.literal}`
+      throw new ParsingError(
+        `Predicado não forneceu argumentos: ${currentToken.literal}`,
+        currentToken.position,
+        consumer.originalInput
       );
     }
 
@@ -195,6 +279,7 @@ function parsePrimary(consumer) {
     return createNode(TokenType.PREDICATE, {
       name: literal[0],
       args: argumentsList,
+      position: currentToken.position,
     });
   }
 
@@ -203,17 +288,26 @@ function parsePrimary(consumer) {
     currentToken.type === TokenType.FALSE
   ) {
     consumer.next();
-    return createNode(currentToken.type);
+    return createNode(currentToken.type, {
+      position: currentToken.position,
+    });
   }
 
   if (currentToken.type === TokenType.NEGATION) {
     consumer.next();
     const childNode = parseUnary(consumer);
-    return createNode(TokenType.NEGATION, { child: childNode });
+    return createNode(TokenType.NEGATION, {
+      child: childNode,
+      position: currentToken.position,
+    });
   }
 
   if (currentToken.type === TokenType.UNKNOWN) {
-    throw new Error(`Erro de sintaxe: ${currentToken.literal}`);
+    throw new ParsingError(
+      `Token desconhecido: ${currentToken.literal}`,
+      currentToken.position,
+      consumer.originalInput
+    );
   }
 
   // Parsing de expressões entre parênteses/colchetes/chaves
@@ -222,26 +316,48 @@ function parsePrimary(consumer) {
     currentToken.type === TokenType.LBRACE ||
     currentToken.type === TokenType.LBRACKET
   ) {
-    consumer.next();
+    const openingToken = consumer.next();
 
     const expressionNode = parseExpression(consumer);
 
     const closingToken = consumer.peek();
 
     const expectedClosingToken = {
-      LPAREN: TokenType.RPAREN,
-      LBRACE: TokenType.RBRACE,
-      LBRACKET: TokenType.RBRACKET,
+      [TokenType.LPAREN]: TokenType.RPAREN,
+      [TokenType.LBRACE]: TokenType.RBRACE,
+      [TokenType.LBRACKET]: TokenType.RBRACKET,
     };
 
     if (
       !closingToken ||
-      closingToken.type !== expectedClosingToken[currentToken.type]
+      closingToken.type !== expectedClosingToken[openingToken.type]
     ) {
-      throw new Error(
-        `Parênteses/colchetes/chaves não foi fechado (esperado: "${
-          expectedClosingToken[currentToken.type]
-        }", encontrado "${closingToken?.literal}")`
+      const expectedType = expectedClosingToken[openingToken.type];
+      const expectedSymbol = Object.keys(LiteralTokenMap).find(
+        (key) => LiteralTokenMap[key] === expectedType
+      );
+
+      if (
+        closingToken &&
+        (closingToken.type === TokenType.RPAREN ||
+          closingToken.type === TokenType.RBRACE ||
+          closingToken.type === TokenType.RBRACKET)
+      ) {
+        const actualSymbol = Object.keys(LiteralTokenMap).find(
+          (key) => LiteralTokenMap[key] === closingToken.type
+        );
+
+        throw new ParsingError(
+          `Fechamento incorreto: esperado "${expectedSymbol}" mas encontrado "${actualSymbol}"`,
+          closingToken.position,
+          consumer.originalInput
+        );
+      }
+
+      throw new ParsingError(
+        `Parênteses/colchetes/chaves não foi fechado(a) (esperado: "${expectedSymbol}")`,
+        consumer.getCurrentPosition(),
+        consumer.originalInput
       );
     }
 
@@ -249,5 +365,9 @@ function parsePrimary(consumer) {
     return expressionNode;
   }
 
-  throw new Error(`Token inesperado: ${currentToken.literal}`);
+  throw new ParsingError(
+    `Token inesperado: ${currentToken.literal}`,
+    currentToken.position,
+    consumer.originalInput
+  );
 }
