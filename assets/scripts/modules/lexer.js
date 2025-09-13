@@ -219,7 +219,7 @@ export function tokenize(input = "") {
         key.startsWith(buffer.substring(0, buffer.length - 1))
       );
 
-      if (possibleTokens.length > 0) {
+      if (possibleTokens.length > 0 && buffer.startsWith("\\")) {
         throw new LexingError(
           `Sequência inválida: '${buffer}' (talvez você quis dizer '${possibleTokens[0]}'?)`,
           currentIndex - buffer.length + 1,

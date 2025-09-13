@@ -160,7 +160,7 @@ body {
   padding: 1.25rem;
   background: var(--card-bg);
   border-radius: 8px;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+  box-shadow: rgba(100, 100, 111, 0.2) 0px 7px 29px 0px;
   border-left: 4px solid var(--primary);
   transition: all 0.2s ease;
   position: relative;
