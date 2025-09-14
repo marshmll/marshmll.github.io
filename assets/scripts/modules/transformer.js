@@ -85,14 +85,28 @@ export function transformFormula(ast) {
     result: prettify(withoutUniversalQuantifiers),
   });
 
-  // Passo 9: Obter Forma Clausal
+  // Passo 9: Forma Normal Conjuntiva
+  const CNF = convertToCNF(withoutUniversalQuantifiers);
+  transformationSteps.push({
+    name: "Forma Normal Conjuntiva",
+    result: prettify(CNF),
+  });
+
+  // Passo 10: Forma Normal Disjuntiva
+  const DNF = convertToDNF(withoutUniversalQuantifiers);
+  transformationSteps.push({
+    name: "Forma Normal Disjuntiva",
+    result: prettify(DNF),
+  });
+
+  // Passo 11: Obter Forma Clausal
   const clausalForm = getClausalForm(convertToCNF(withoutUniversalQuantifiers));
   transformationSteps.push({
     name: "Forma Clausal",
     result: clausalForm,
   });
 
-  // Passo 10: Identificar Cláusulas de Horn
+  // Passo 12: Identificar Cláusulas de Horn
   const hornClauses = getHornClauses(convertToCNF(withoutUniversalQuantifiers));
   transformationSteps.push({
     name: "Cláusulas de Horn",
@@ -225,18 +239,7 @@ function moveNegationsInward(ast) {
 }
 
 // Sequência padrão de nomes de variáveis para padronização
-const variableSequence = [
-  "x",
-  "y",
-  "z",
-  "u",
-  "v",
-  "w",
-  "\\alpha",
-  "\\beta",
-  "\\gamma",
-  "\\delta",
-];
+const variableSequence = ["x", "y", "z", "u", "v", "w", "\\alpha", "\\beta"];
 
 // Padroniza nomes de variáveis para evitar conflitos
 function standardizeVariables(
@@ -373,11 +376,15 @@ function convertToPrenexForm(ast) {
   return applyQuantifiers(matrix, quantifiers);
 }
 
+// Sequência de nomes de função para padronização
+const functionSequence = ["f", "g", "h", "\\phi", "\\gamma", "\\chi", "\\zeta"];
+
 // Skolemização: remove quantificadores existenciais usando funções de Skolem
 function skolemization(ast) {
   if (!ast) return ast;
 
-  let skolemCounter = { value: 0 };
+  let skolemFuncCounter = { value: 0 };
+  let skolemConstCounter = { value: 1 };
 
   function skolemizeRecursively(
     node,
@@ -389,8 +396,10 @@ function skolemization(ast) {
         // Cria função de Skolem para variável existencial
         const functionName =
           universalQuantifiers.length > 0
-            ? `f_${skolemCounter.value++}`
-            : `c_${skolemCounter.value++}`;
+            ? skolemFuncCounter.value < functionSequence.length
+              ? functionSequence[skolemFuncCounter.value++]
+              : `f_${skolemFuncCounter.value++}`
+            : `c_${skolemConstCounter.value++}`;
         const skolemArguments = universalQuantifiers.map(
           (quantifier) => quantifier.variable
         );
@@ -815,26 +824,49 @@ function getHornClauseType(clause) {
   const literals = extractLiterals(clause);
   let positiveCount = 0;
   let negativeCount = 0;
+  let hasTrue = false;
+  let hasFalse = false;
 
   for (const literal of literals) {
-    if (isPositiveLiteral(literal)) {
+    if (literal.type === TokenType.TRUE) {
+      hasTrue = true;
+      positiveCount++;
+    } else if (literal.type === TokenType.FALSE) {
+      hasFalse = true;
+      negativeCount++; // FALSE behaves like a negative constraint
+    } else if (isPositiveLiteral(literal)) {
       positiveCount++;
     } else {
       negativeCount++;
     }
   }
 
-  if (positiveCount === 1 && negativeCount === 0) {
-    return "Fato"; // Apenas um literal positivo (ex: P)
-  } else if (positiveCount === 1 && negativeCount > 0) {
-    return "Regra"; // Um positivo e um ou mais negativos (ex: ¬P ∨ Q)
-  } else if (positiveCount === 0 && negativeCount > 0) {
-    return "Consulta"; // Apenas literais negativos (ex: ¬P ∨ ¬Q)
-  } else if (positiveCount === 0 && negativeCount === 0) {
-    return "Vazia"; // Cláusula vazia
+  // Special case: clause contains FALSE
+  if (hasFalse) {
+    // If FALSE is the only literal, it's the empty clause
+    if (literals.length === 1) return "Vazia";
+    // Otherwise, it's a contradictory clause
+    return "Inválida (contém contradição)";
   }
 
-  return "Desconhecido";
+  // Special case: clause contains TRUE
+  if (hasTrue) {
+    // TRUE makes the whole clause tautological
+    return "Tautologia";
+  }
+
+  // Standard Horn clause classification
+  if (positiveCount === 1 && negativeCount === 0) {
+    return "Fato";
+  } else if (positiveCount === 1 && negativeCount > 0) {
+    return "Regra";
+  } else if (positiveCount === 0 && negativeCount > 0) {
+    return "Consulta";
+  } else if (positiveCount === 0 && negativeCount === 0) {
+    return "Vazia";
+  }
+
+  return "Não é Horn (múltiplos positivos)";
 }
 
 // Extrai todos os literais de uma cláusula (disjunção)
@@ -868,11 +900,17 @@ function isPositiveLiteral(node) {
     return false;
   }
 
-  return (
-    node.type === TokenType.VAR ||
-    node.type === TokenType.PREDICATE ||
-    node.type === TokenType.TRUE
-  );
+  // TRUE is always positive
+  if (node.type === TokenType.TRUE) {
+    return true;
+  }
+
+  // FALSE is never positive (it's a contradiction)
+  if (node.type === TokenType.FALSE) {
+    return false;
+  }
+
+  return node.type === TokenType.VAR || node.type === TokenType.PREDICATE;
 }
 
 // Função principal para executar todas as transformações

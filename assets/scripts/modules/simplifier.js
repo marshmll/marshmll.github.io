@@ -2,7 +2,26 @@ import { TokenType } from "./lexer.js";
 import { TRUE, FALSE, NEG, OR, AND } from "./transformer.js";
 
 // Gera uma chave única para um nó baseada na sua estrutura JSON
-const getNodeKey = (node) => JSON.stringify(node);
+const getNormalizedNodeKey = (node) => {
+  if (node.type === TokenType.VAR) {
+    return JSON.stringify({ type: node.type, name: node.name });
+  }
+  if (node.type === TokenType.PREDICATE) {
+    return JSON.stringify({
+      type: node.type,
+      name: node.name,
+      args: node.args,
+    });
+  }
+  if (node.type === TokenType.TRUE) {
+    return JSON.stringify({ type: TokenType.TRUE });
+  }
+  if (node.type === TokenType.FALSE) {
+    return JSON.stringify({ type: TokenType.FALSE });
+  }
+  // For negation, we already handle in getLiteralKey, so we shouldn't get here
+  return JSON.stringify(node);
+};
 
 // Verifica se um nó é um literal (VAR, TRUE/FALSE, PREDICATE ou negação de atômico)
 function isLiteral(node) {
@@ -25,16 +44,17 @@ function isLiteral(node) {
 
 // Gera chave para literal, tratando negações com prefixo "!"
 function getLiteralKey(node) {
-  if (node.type === TokenType.NEGATION) return "!" + getNodeKey(node.child);
-  return getNodeKey(node);
+  if (node.type === TokenType.NEGATION)
+    return "!" + getNormalizedNodeKey(node.child);
+  return getNormalizedNodeKey(node);
 }
 
 // Verifica se dois literais são complementares (um é negação do outro)
 function areComplementary(nodeA, nodeB) {
-  return (
-    getLiteralKey(nodeA) === "!" + getLiteralKey(nodeB) ||
-    getLiteralKey(nodeB) === "!" + getLiteralKey(nodeA)
-  );
+  const keyA = getLiteralKey(nodeA);
+  const keyB = getLiteralKey(nodeB);
+
+  return keyA === "!" + keyB || keyB === "!" + keyA;
 }
 
 // Achata nós aninhados do mesmo tipo (A ∧ (B ∧ C)) -> (A ∧ B ∧ C)
@@ -53,7 +73,7 @@ function removeDuplicateNodes(nodes) {
   const seenKeys = new Set();
   const uniqueNodes = [];
   for (const node of nodes) {
-    const nodeKey = getNodeKey(node);
+    const nodeKey = getNormalizedNodeKey(node);
     if (!seenKeys.has(nodeKey)) {
       seenKeys.add(nodeKey);
       uniqueNodes.push(node);
@@ -173,10 +193,13 @@ export function simplifyFNC(rootNode) {
   // Converte cada cláusula para um conjunto normalizado de literais
   const clauses = simplifiedNode.children
     .map(simplifyClauseForFNC)
-    .filter(Boolean); // remove cláusulas TRUE
+    .filter((clause) => clause.kind !== TokenType.TRUE); // Remove tautologias
 
   // Se qualquer cláusula é FALSE => toda FNC é FALSE
   if (clauses.some((clause) => clause.kind === TokenType.FALSE)) return FALSE();
+
+  // FNC vazia
+  if (clauses.length === 0) return TRUE();
 
   // Filtra apenas cláusulas válidas com conjuntos
   const validClauses = clauses.filter(
@@ -205,7 +228,9 @@ export function simplifyFNC(rootNode) {
   const rebuiltClauses = keptClauses.map((clause) =>
     createDisjunctionFromSet(clause.literalSet)
   );
+
   if (rebuiltClauses.length === 1) return rebuiltClauses[0];
+
   return AND(rebuiltClauses);
 }
 
@@ -266,8 +291,9 @@ function simplifyClauseForFNC(node) {
   // Se cláusula contém literais complementares => cláusula é TRUE
   for (let i = 0; i < literals.length; i++) {
     for (let j = i + 1; j < literals.length; j++) {
-      if (areComplementary(literals[i], literals[j]))
-        return { kind: TokenType.TRUE };
+      if (areComplementary(literals[i], literals[j])) {
+        return { kind: TokenType.TRUE }; // Tautologia
+      }
     }
   }
 

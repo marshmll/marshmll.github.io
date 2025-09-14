@@ -16,9 +16,12 @@ const customMacros = {
 
 // Passos destacados na interface
 const HIGHLIGHTED_STEPS = [
+  "Forma Normal Negativa",
   "Forma Normal Conjuntiva Prenex",
   "Forma Normal Disjuntiva Prenex",
   "Forma Normal Skolem",
+  "Forma Normal Conjuntiva",
+  "Forma Normal Disjuntiva",
   "Forma Clausal",
   "Cláusula de Horn",
 ];
@@ -227,8 +230,6 @@ calculateButton.addEventListener("click", () => {
     const abstractSyntaxTree = parse(tokenConsumer);
     const transformationSteps =
       executeCompleteTransformations(abstractSyntaxTree);
-
-    console.log(transformationSteps);
 
     displayTransformationSteps(transformationSteps);
   } catch (error) {
